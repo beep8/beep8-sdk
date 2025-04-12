@@ -1,14 +1,12 @@
+# Set the project name to the current directory name
+# For example, if the path is /Users/foo/beep8-sdk/sample/hello,
+# then "hello" will be assigned to $(PROJECT)
 PROJECT := $(notdir $(CURDIR))
 
-EXPORT_LIST = 1
+# Uncomment the following line to enable .lst (assembly listing) file generation.
+# This will slightly increase the build time due to the extra output step.
+# EXPORT_LIST = 1
 
-#define ON_AFTER_BUILD
-#cp $(B8ROM_IMAGE) $(TOOL_TOP)/beep8_app_player/src/b8.bin/appplayer.bin
-#endef
-
-SPAGE = -s https://beep8.org:9443/b8/beep8.electron.html
-HTTP_PORT = 9443
-API_PORT = 9082
-EXPORT_LIST = 1
-
+# Include the common application Makefile
+# This file contains shared build rules and toolchain settings
 include	../makefile.app

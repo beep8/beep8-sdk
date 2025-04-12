@@ -12,7 +12,6 @@ PNG_OBJS = $(patsubst %.cpp,%.o,$(PNGS_EXPORT_CPP))
 OBJS += $(PNG_OBJS)
 OBJS_SORTED = $(sort $(OBJS))
 
-#C_SRC = $(wildcard *.c)
 C_SRC = $(foreach src,$(wildcard *.c),$(realpath $(src)))
 OBJS += $(patsubst %.c,$(OBJDIR)/%.o,$(C_SRC))
 
@@ -43,7 +42,6 @@ PNG2C = $(TOOL_TOP)/png2c/$(OS)/$(HW)/png2c
 
 # bin2c
 BIN2C = $(TOOL_TOP)/bin2c_py/bin2c.py
-
 
 # genb8rom
 GENB8ROM=$(TOOL_TOP)/genb8rom/$(OS)/$(HW)/genb8rom
