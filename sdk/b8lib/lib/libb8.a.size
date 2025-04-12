@@ -1,0 +1,13 @@
+   text	   data	    bss	    dec	    hex	filename
+   1211	      0	    260	   1471	    5bf	sys.o (ex lib/libb8.a)
+  11621	      0	  12793	  24414	   5f5e	os.o (ex lib/libb8.a)
+     48	      0	      0	     48	     30	misc.o (ex lib/libb8.a)
+   6206	      0	      0	   6206	   183e	ppu.o (ex lib/libb8.a)
+    160	      0	      0	    160	     a0	errno.o (ex lib/libb8.a)
+    436	      0	      0	    436	    1b4	semaphore.o (ex lib/libb8.a)
+    816	      0	      0	    816	    330	pthread.o (ex lib/libb8.a)
+    556	      0	      0	    556	    22c	syscall.o (ex lib/libb8.a)
+    120	      0	      0	    120	     78	tmr.o (ex lib/libb8.a)
+    904	      2	    271	   1177	    499	hif.o (ex lib/libb8.a)
+      8	      0	      0	      8	      8	sched.o (ex lib/libb8.a)
+  22086	      2	  13324	  35412	   8a54	(TOTALS)

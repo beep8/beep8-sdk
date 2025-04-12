@@ -1,0 +1,16 @@
+{
+    "configurations": [
+        {
+            "name": "Your Configuration Name",
+            "includePath": [
+                "${workspaceFolder}/**"
+            ],
+            "defines": [],
+            "compilerPath": "",  // コンパイラのパスを指定
+            "cStandard": "c11",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "gcc-x64" // 使用しているコンパイラに合わせて変更
+        }
+    ],
+    "version": 4
+}

@@ -1,0 +1,1 @@
+PATH=%PATH%;%cd%\tool\make;%cd%\tool\busybox

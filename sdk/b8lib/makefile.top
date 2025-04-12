@@ -1,0 +1,21 @@
+TOPDIR = $(CURDIR)
+
+B8DIR_ := $(dir $(lastword $(MAKEFILE_LIST)))
+
+B8DIR := $(B8DIR_:%/=%)
+
+include $(B8DIR)/makefile.inc
+
+# Add $(TOPDIR) to the VPATH variable, which specifies directories
+# where make will search for source and dependency files if they are
+# not found in the current directory. By including $(TOPDIR) in VPATH,
+# make can locate files in the specified directory without requiring
+# full paths in rules. The export statement ensures that VPATH is also
+# available to any sub-make processes, maintaining consistent search
+# paths across all levels of the build process.
+VPATH += $(TOPDIR)
+export VPATH
+
+ifndef OBJDIR
+    $(error please set OBJDIR in the Makefile)
+endif

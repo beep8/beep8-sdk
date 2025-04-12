@@ -1,0 +1,22 @@
+var searchData=
+[
+  ['b8hifgetevents_0',['b8HifGetEvents',['../hif_8h.html#ae955d23f0feeeac56b997f77a31f4c18',1,'hif.c']]],
+  ['b8ppuaddot_1',['b8PpuAddOT',['../ppu_8h.html#a620b9310949761f726d806776371cd1c',1,'ppu.c']]],
+  ['b8ppuallocot_2',['b8PpuAllocOT',['../ppu_8h.html#af18799d618dab9163ee060e645dba5fe',1,'ppu.c']]],
+  ['b8ppuenablevblankinterrupt_3',['b8PpuEnableVblankInterrupt',['../ppu_8h.html#a5ca63fc5863872ba22583e3e279615a1',1,'ppu.c']]],
+  ['b8ppuexec_4',['b8PpuExec',['../ppu_8h.html#a6f9adfc118e1b007e88d2a7a65663c53',1,'ppu.c']]],
+  ['b8ppugetresolution_5',['b8PpuGetResolution',['../ppu_8h.html#afeeb749fa0fd68800f7eca44351a3982',1,'ppu.c']]],
+  ['b8ppureset_6',['b8PpuReset',['../ppu_8h.html#adc909e34eb2849ffe563e6aa72c18ca8',1,'ppu.c']]],
+  ['b8ppuvsyncwait_7',['b8PpuVsyncWait',['../ppu_8h.html#adc0d6690bf2a8e1eaf437e57b32baf0e',1,'ppu.c']]],
+  ['b8sysgetcpuclock_8',['b8SysGetCpuClock',['../sys_8h.html#a30a9bfdad345f370e6f86504e3260f15',1,'sys.c']]],
+  ['b8syshalt_9',['b8SysHalt',['../sys_8h.html#a7b1316f577177270c2e1c89204fe9798',1,'sys.c']]],
+  ['b8sysirqwait_10',['b8SysIrqWait',['../sys_8h.html#a022532279b71dff6ffd578fd76ae0602',1,'sys.c']]],
+  ['b8sysputcr_11',['b8SysPutCR',['../sys_8h.html#ac3188cd3d23d76c48b3005d9f4ad81dc',1,'sys.c']]],
+  ['b8sysputhex_12',['b8SysPutHex',['../sys_8h.html#a2bcc34661badc738582e04015e74dada',1,'sys.c']]],
+  ['b8sysputnum_13',['b8SysPutNum',['../sys_8h.html#a60f402199eb0be1a10149166aaba298c',1,'sys.c']]],
+  ['b8sysputs_14',['b8SysPuts',['../sys_8h.html#ad7483f23d6b4c6937b8a37b139069c58',1,'sys.c']]],
+  ['b8sysreset_15',['b8SysReset',['../sys_8h.html#a5895c9e5318a185513373001da752c93',1,'sys.c']]],
+  ['b8syssetupirqwait_16',['b8SysSetupIrqWait',['../sys_8h.html#a9c8a1bfe0201955bc0c0eec12f096cea',1,'sys.c']]],
+  ['b8tmrsetup_17',['b8TmrSetup',['../tmr_8h.html#aa23571091f56c751c4bc4f06f79c92a8',1,'tmr.c']]],
+  ['b8tmrwait_18',['b8TmrWait',['../tmr_8h.html#a77b83ce867cc6bf9077b51cf85832f74',1,'tmr.c']]]
+];
