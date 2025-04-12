@@ -31,4 +31,6 @@
 *.out
 *.app
 
+**/obj/
+
 .DS_Store

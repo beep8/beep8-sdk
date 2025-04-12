@@ -1,3 +1,28 @@
+###############################################################################
+# BEEP-8 SDK Application Makefile (makefile.app)
+#
+# This Makefile defines common build rules and variables for BEEP-8 applications.
+# It is intended to be included from individual sample Makefiles.
+#
+# Key Features:
+# - Automatically collects all .c and .cpp files in the current directory
+# - Converts PNG images in ./data/import/ into C source via png2c, and compiles them
+# - Generates BEEP-8 ROM (.b8) and optional listing file (.lst)
+# - Supports Windows command prompt (DOS window), macOS, Linux, and WSL
+# - Uses relative paths for portability across sample projects
+#
+# Notes:
+# - Set `EXPORT_LIST = 1` in the including Makefile to enable .lst file generation
+# - Object files are collected into OBJS_UNSORTED and deduplicated via OBJS_SORTED
+# - Custom tool paths (e.g., png2c, genb8rom) are resolved based on $(OS)/$(HW)
+# - To build a project, just include this file and define `PROJECT := <name>`
+#
+# Example sample Makefile:
+#   PROJECT := hello
+#   # EXPORT_LIST = 1
+#   include ../makefile.app
+###############################################################################
+
 OBJDIR = ./obj
 EXPORTDIR = ./data/export
 
@@ -5,18 +30,19 @@ HTTP_PORT ?= 443
 API_PORT ?= 8082
 Q ?= @
 
+OBJS_UNSORTED =
+
 PNGS     = $(wildcard ./data/import/*.png)
 PNGS_CPP = $(patsubst %.png,%.png.cpp,$(PNGS))
 PNGS_EXPORT_CPP = $(subst import,export,$(PNGS_CPP))
 PNG_OBJS = $(patsubst %.cpp,%.o,$(PNGS_EXPORT_CPP))
-OBJS += $(PNG_OBJS)
-OBJS_SORTED = $(sort $(OBJS))
+OBJS_UNSORTED += $(PNG_OBJS)
 
 C_SRC = $(foreach src,$(wildcard *.c),$(realpath $(src)))
-OBJS += $(patsubst %.c,$(OBJDIR)/%.o,$(C_SRC))
+OBJS_UNSORTED += $(patsubst %.c,$(OBJDIR)/%.o,$(C_SRC))
 
 CPP_SRC = $(wildcard *.cpp)
-OBJS += $(patsubst %.cpp,$(OBJDIR)/%.o,$(CPP_SRC))
+OBJS_UNSORTED += $(patsubst %.cpp,$(OBJDIR)/%.o,$(CPP_SRC))
 
 TOP = $(abspath ../../../)
 
@@ -70,7 +96,8 @@ B8LIB_CRT	= $(B8LIB_SRC)/crt
 B8LDSCRIPT= $(B8LIB_CRT)/beep8.ld
 GNUARM_TOP = $(TOP)/gnuarm
 
-OBJS += $(OBJDIR)/bootloader.o $(OBJDIR)/crt0.o
+OBJS_UNSORTED += $(OBJDIR)/bootloader.o $(OBJDIR)/crt0.o
+OBJS_SORTED = $(sort $(OBJS_UNSORTED))
 
 DEPS = $(OBJS_SORTED:.o=.d)
 LST_FILE = $(abspath $(OBJDIR)/$(PROJECT).lst)
@@ -199,6 +226,7 @@ mostlyclean: clean
 
 .PHONY: info
 info:
+	@echo "PROJECT  = $(PROJECT)"
 	@echo "OS     = $(OS)"
 	@echo "HW     = $(HW)"
 	@echo "CROSS  = $(CROSS)"
