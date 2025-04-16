@@ -1,31 +1,40 @@
 # BEEP-8 SDK
 
-**BEEP-8** is a virtual retro game console inspired by PICO-8. Designed primarily for developing C/C++ applications, it runs on a 2MHz ARM v4T emulator and is optimized for vertical smartphone displays. The SDK provides both low-level hardware APIs and a PICO-8-like high-level API to ease the transition for developers familiar with PICO-8.
+**BEEP-8** is a virtual retro game console designed for developing C/C++ applications. It runs on an emulated ARM v4T CPU at a fixed 2 MHz and is optimized for vertical smartphone displays. The SDK provides a two-layer architecture: you can access the hardware (H/W) directly using low-level APIs, or you can use a high-level C/C++ library for simpler, more abstracted development.
 
 ---
 
 ## Features
 
-- **Emulated CPU**: ARM v4T running at a fixed 2 MHz.
-- **Memory**: 2 MB of RAM.
-- **Display**: A 128×240 pixel vertical screen with a fixed 16-color palette (PICO-8–compatible).
-- **Graphics Engine (PPU)**:
+- **Emulated CPU:** ARM v4T running at a fixed 2 MHz.
+  - Based on an architecture originating in the mid-1990s, the ARM v4T design provides a solid foundation for retro-style computing.
+  - Compilable using GNU ARM GCC and supports C++20.
+- **Memory:** 1 MB of RAM.
+- **Display:** A 128×240 pixel vertical screen with a fixed 16-color palette.
+- **Graphics Engine (PPU):**
   - Supports sprites, background layers, and primitive drawing (rectangles, lines, circles, polygons).
-  - Allows manipulation of color palettes, drawing depth (z-coordinate via `setz()`), and clipping.
-- **Audio Engine (APU)**:
-  - Namco C30–like sound synthesis with 16-channel wavetable and 2-channel noise.
-  - Real-time audio processing implemented in JavaScript using the WebAudio API.
-- **Custom RTOS (`b8OS`)**:
-  - Lightweight real-time operating system with threading, semaphores, system calls, and interrupt management.
-  - Designed specifically for BEEP-8 to handle multitasking and hardware interfacing.
-- **Peripheral I/O**:
-  - Supports keyboard, mouse, and touch inputs via a built-in Human Interface (HIF) module.
-  - Additional modules for serial communication (SCI), timer functions (TMR), and more.
-- **Development Environment**:
-  - Build your application in C/C++ using a familiar, PICO-8–like API (provided in the `pico8` namespace).
-  - Source code and headers are organized for clarity and ease of use.
-- **Browser-Based Execution**:
-  - The emulator runs entirely in the web browser (Chrome, Safari, Edge, etc.), making distribution and testing convenient.
+  - Provides control over color palettes, drawing depth (via `setz()`), and clipping.
+- **Audio Engine (APU):**
+  - Internally supports up to 16 channels; however, the initial configuration is set to 8 channels for simplicity.
+  - Real-time sound synthesis similar to a Namco C30–style sound generator.
+  - Implemented using the WebAudio API for high-performance audio processing.
+- **Custom RTOS (`b8OS`):**
+  - A lightweight real-time operating system handling threading, semaphores, system calls, and interrupt management.
+  - Its design allows developers to focus on game creation without worrying about OS-level details.
+- **Peripheral I/O:**
+  - Fully supports keyboard, mouse, and touch inputs via a dedicated HIF module.
+  - Additional modules provide serial communication (SCI), timer functions (TMR), and more.
+- **Development Environment:**
+  - Access the hardware directly through low-level APIs or use the higher-level C/C++ library that abstracts these details.
+  - All C/C++ source code is fully open.
+- **Browser-Based Execution:**
+  - The emulator runs in major browsers (Chrome, Safari, Firefox, Edge) on PC, iPhone, iPad, Android, and virtually any device.
+  - WebGL is employed to guarantee a consistent 60fps performance.
+- **Distribution:**
+  - Completed games are delivered as a single ROM file.
+  - Anyone can publish their games on the BEEP-8 portal site.
+- **Cost:**
+  - The SDK is completely free to use, and game releases are free as well.
 
 ---
 
@@ -57,47 +66,47 @@
 BEEP-8 comprises several key modules:
 
 - **CPU & RTOS (b8OS):**  
-  The core is a custom RTOS that schedules threads on an emulated ARM v4T CPU running at 2MHz. All system calls (thread creation, semaphores, sleep, and exit) are handled via a dedicated SVC dispatch mechanism.
+  The heart of BEEP-8 is a custom RTOS that schedules threads on an emulated ARM v4T CPU operating at 2 MHz. You can either write code that directly interacts with the hardware registers or leverage the high-level C/C++ library to abstract hardware details. This dual-layer architecture offers both flexibility and ease of use.
 
 - **Graphics (PPU):**  
-  The PPU emulation supports drawing sprites, rectangles, lines, and polygons. It manages a 4bpp VRAM arranged into sprite and background banks and supports palette management and clipping.
+  The PPU emulation supports drawing sprites, shapes, and polygons. It manages a 4bpp VRAM organized into sprite and background banks, offering full control over palettes and depth for drawing operations.
 
 - **Audio (APU):**  
-  A JavaScript-based emulation of a Namco C30–like sound engine that synthesizes audio in real time, including both wavetable and noise channels.
+  The APU provides real-time sound synthesis with an initial configuration of 8 channels (while the hardware supports up to 16), emulating a Namco C30–style sound generator through WebAudio.
 
 - **I/O Systems:**  
-  Input handling (keyboard, mouse, touch) is managed by the HIF module, while peripheral devices such as SCI (serial communication), TMR (timers), and Virtual I/O are integrated into a cohesive framework.
+  Input is handled via a dedicated HIF module for keyboard, mouse, and touch. Additional peripherals include modules for serial communication, timers, and other virtual I/O.
 
-- **High-Level API (pico8 namespace):**  
-  Provides a set of functions that mimic the original PICO-8 API—such as `cls()`, `spr()`, `map()`, and more—allowing developers to leverage familiar constructs while taking advantage of native C/C++ performance.
+- **Development Environment:**  
+  All C/C++ source code is provided openly, and you can use GNU ARM GCC as well as C++20 for development. Use either low-level hardware access or a high-level API (in the `pico8` namespace) based on your preference.
 
 ---
 
 ## API Documentation
 
-For full API details, please refer to the header files in the `include/` directory. Key headers include:
-- **pico8.h**: Contains the PICO-8–like API for graphics, sound, and input.
-- **Other headers**: Define low-level functions for PPU, APU, and the RTOS (`b8OS`).
+For complete API details, please refer to the header files in the `include/` directory. Key headers include:
+- **pico8.h:** Defines the high-level API for graphics, sound, and input.
+- **Other headers:** Provide low-level interfaces for the PPU, APU, and RTOS (`b8OS`).
 
 ---
 
 ## Sample Application
 
-The following is a minimal "Hello World" sample demonstrating a BEEP-8 application:
+Below is a minimal "Hello World" sample that demonstrates a BEEP-8 application:
 
 ```c
 #include <stdio.h>
 #include <beep8.h>
 
 int main(void) {
-  // Print debug output; note that on BEEP-8, printf() output is sent to the
-  // emulator's debug console (visible on the side) rather than the screen.
+  // Print debug output; on BEEP-8, printf() output is sent to the
+  // emulator's debug console (visible on the side) rather than on-screen.
   printf("hello BEEP-8\n");
   return 0;
 }
 ```
 
-> **Note:** Although this sample immediately exits after printing, it serves as the simplest example for compiling and running a BEEP-8 application.
+> **Note:** Although this sample exits immediately after printing, it serves as the simplest example to illustrate how to compile and run a BEEP-8 application.
 
 ---
 
@@ -109,8 +118,8 @@ This project is licensed under the MIT License. See the LICENSE file for details
 
 ## Contact
 
-- **Email:** beep8.official@gmail.com  
-- **Website:** https://beep8.org
+- **Email:** [beep8.official@gmail.com](mailto:beep8.official@gmail.com)
+- **Website:** [https://beep8.org](https://beep8.org)
 
 ---
 
