@@ -1,3 +1,11 @@
+/*
+  PICO-8 LikeLibrary for C/C++ の簡単なサンプルです。
+
+  黄色い丸顔のキャラクター(Foo君)がランダムで歩きます。
+  PCのキーボードのカーソルキーで動作させることもできます。
+  スマホ経由だとキーボードがないので操作できません。
+  PCのキーボードの'z'で、描画モードをトグルできます。
+*/
 #include <pico8.h>
 
 using namespace std;  
@@ -9,51 +17,62 @@ extern	const uint8_t  b8_image_sprite1[];
 class _Pico8 : public Pico8 {
   Vec cam;
 
+  // Foo君の座標
+  Vec pos_foo;
+  // Foo君の速度
+  Vec v_foo;
+
   fx8 radius;
   int frame = 0;
   u32 mode = 0;
 
+  // 初期化時に一回だけ呼び出される初期化関数です。
   void  _init(){
+    // ./data/export/sprite0.png.cpp にC言語配列変数として収納されているスプライトイメージをロードします
+    // sprite0.png.cpp は ./data/import/sprite0.png から変換されたデータです。
+    // ./sdk/app/pico8_example/' で移動してから 'make' したときに変換されます。
     lsp(0,b8_image_sprite0 );
+
+    // ./data/export/sprite1.png.cpp にC言語配列変数として収納されているスプライトイメージをロードします
     lsp(1,b8_image_sprite1 );
 
-    frame = 0;
+    // BG面(32tile x 32tile)を初期化します。
+    // 1tileは 8x8 pixです
     mapsetup( TILES_32, TILES_32 );
 
+    // BG面を0クリアします。
     b8PpuBgTile tile = {};
     mcls( tile );
 
-    tile.YTILE = 2;
-
-    for( int nn=0 ; nn<30 ; ++nn ){
-      msett( rand()&15,rand()&15,tile);
+    // BG面をランダムで埋めます
+    for( int nn=0 ; nn<100 ; ++nn ){
+      tile.XTILE = rand()%5;
+      tile.YTILE = 2;
+      msett( rand()&31,rand()&31,tile);
     }   
-    for( int yy=0 ; yy<TILES_32 ; ++yy ){
-      for( int xx=0 ; xx<TILES_32 ; ++xx ){
-        b8PpuBgTile tr;
-        tr = mgett(xx,yy);
-        if( tr.XTILE == 0 && tr.YTILE == 0 ){
-          printf(".");
-        } else {
-          printf("x");
-        } 
-      }
-      printf("\n");
-    }
+
+    // Foo君の位置を初期化
+    pos_foo.set(64,64);
   }
 
   void  _update(){
     ++frame;
     if( btn( BUTTON_LEFT ) ){
-      cam.x -= 1;
+      v_foo.x = -1;
     } else if( btn( BUTTON_RIGHT ) ){
-      cam.x += 1;
+      v_foo.x = +1;
+    } else {
+      v_foo.x = 0;
     }
+
     if( btn( BUTTON_UP ) ){
-      cam.y -= 1;
+      v_foo.y = -1;
     } else if( btn( BUTTON_DOWN ) ){
-      cam.y += 1;
+      v_foo.y = +1;
+    } else {
+      v_foo.y = 0;
     }
+    pos_foo += v_foo;
 
     if( btnp( BUTTON_O ) ){
       mode = (mode+1)%5;
@@ -63,14 +82,14 @@ class _Pico8 : public Pico8 {
     radius += fx8(1,256);
 
 #if 0
+    // ボタンの入力状況を確認できます
     if( btn( BUTTON_LEFT ) )  printf("LEFT\n");
     if( btn( BUTTON_RIGHT ) ) printf("RIGHT\n");
     if( btn( BUTTON_UP ) )    printf("UP\n");
     if( btn( BUTTON_DOWN ) )  printf("DOWN\n");
     if( btn( BUTTON_O ) )     printf("O\n");
     if( btn( BUTTON_X ) )     printf("X\n");
-#else
-    //printf( "mouse:(%d,%d) left:%ld\n" , mousex(),mousey() ,mousestatus()& pico8::LEFT );
+    printf( "mouse:(%ld,%ld) left:%ld\n" , mousex(),mousey() ,mousestatus()& pico8::LEFT );
 #endif
   }
 
@@ -85,6 +104,7 @@ class _Pico8 : public Pico8 {
     clip();
 
     setz( maxz()-1 );
+#if 0
     Rect rc;
     rc.x = rc.y = 10;
     rc.w = 128-rc.x*2;
@@ -93,9 +113,13 @@ class _Pico8 : public Pico8 {
     rect    (rc.x-1,rc.y-1,rc.x + rc.w,rc.y + rc.h,BLACK);
     rectfill(rc.x,rc.y,rc.x + rc.w,rc.y + rc.h);
     clip(rc.x,rc.y,rc.w,rc.h);
+#endif
 
     setz( maxz() );
     camera();
+
+    cam = pos_foo - Vec(64,64);
+
     map(cam.x,cam.y,BG_0);
     camera(cam.x,cam.y);
     setz( maxz()/2 );
@@ -103,11 +127,13 @@ class _Pico8 : public Pico8 {
     const u8 palsel = 1;
     pal(WHITE,BLACK,palsel);
 
+    spr(16,pos_foo.x,pos_foo.y,1,1,v_foo.x<0,false);
+
     auto db = stat( 1000 );
     switch( mode ){
       case  0:
         //spr(16+256,43,55, 5,4,false,true,palsel);
-        sprb(1,16,43,55, 5,4,false,true,palsel);
+        //sprb(1,16,43,55, 5,4,false,true,palsel);
         break;
 
       case  1:{
@@ -177,10 +203,11 @@ class _Pico8 : public Pico8 {
   }
 };
 
+// C/C++言語としてのmain()です。 
+// PICO-8 ライブラリを動作させるおまじないです。
 static  _Pico8* _pico8;
-
 int main(){
   _pico8 = new _Pico8;
-  _pico8->run();
+  _pico8->run();  // ::run() の中で無限Loopに入ります。
   return 0;
 }

@@ -33,85 +33,10 @@
 #include <optional> 
 
 /*
-
-TODO: PICO8 本家との比較表
-
-TODO: tget / tset で揃える
-
-start() -- 開始
-
-OK: abs(x) -- xの絶対値
-OK: atan2(dx, dy) -- (dx, dy)を0から1の角度に変換する
-NONEED: c/c++ では不要 band(x, y) -- ビット単位の論理積
-NONEED: c/c++ では不要 bnot(x) -- ビット単位の否定
-NONEED: c/c++ では不要 bor(x, y) -- ビット単位の論理和
-NONEED: c/c++ では不要 bxor(x, y) -- ビット単位の排他的論理和
-OK: cos(x) -- xの余弦, 1周期は0から1の範囲
-OK: sin(x) -- xの正弦, 1周期は0から1の範囲, 正負は反転している
-OK: flr(x) -- 切り捨て
-OK: NEW cel(x)
-
-OK: -flr(-x) -- 関数ではないが, 切り上げとして使える
-OK: max(x, y) -- x,yの最大値
-OK: min(x, y) -- x,yの最小値
-OK: mid(x, y, z) -- x,y,zの中間の値
-OK: sgn(x) -- 引数の符号を-1か1で返す. sgn(0)の時は1になる
-
-NONEED: shl(x, y) -- 左シフト
-NONEED: shr(x, y) -- 右シフト
-
-OK: sqrt(x) -- xの平方根
-OK: rnd(x) -- 0以上x未満の乱数
-OK: srand(x) -- 乱数のシードを設定する
-
-OK: btn
-OK: btnp
-OK: btnr
-
-OK: mousex
-OK: mousey
-OK: mousestatus
-
-OK  scursor(x, y) -- カーソル位置を設定する
-OK  sprint(str, [x, y, [col]]) -- 文字列を出力する
-
-TODO: cursor
-TODO: print
-
-OK:   sget(x, y) -- スプライトシートのピクセルの色を取得する
-TODO:  sset(x, y, [col]) -- スプライトシートのピクセルの色を設定する
-X   sspr(sx, sy, sw, sh, dx, dy, [dw, dh], [flip_x], [flip_y]) -- スプライトシートから指定範囲を描画する / 拡大縮小は非サポート
-
-OK: map(cel_x, cel_y, sx, sy, cel_w, cel_h, [layer]) -- マップを描画する. layer指定時はスプライトフラグと一致した時のみ描画される. スプライト0番は描画されない
-OK: mapdraw(cel_x, cel_y, sx, sy, cel_w, cel_h, [layer]) -- マップを描画する. 'map()'と同じ
-OK: tget(x, y) -- マップのセルの値を取得する
-OK: mset(x, y, v) -- マップのセルの値を設定する
-
-OK  camera([x, y]) -- カメラ位置を設定する
-
-OK  circ(x, y, r, [col]) -- 円を描画する
-OK  circfill(x, y, r, [col]) -- 塗りつぶされた円を描画する
-OK  line(x0, y0, x1, y1, [col]) -- 直線を描画する
-
-OK  clip([x, y, w, h]) -- 描画範囲を設定する
-OK  cls([col]) -- 画面をクリアする. col=クリア色
-OK  color(col) -- デフォルトの描画色を設定する
-
-OK  fset(n, [f], v) -- スプライトフラグの値を設定する
-OK  fget(n, [f]) -- スプライトフラグの値を取得する
-X   flip() -- バックバッファを画面に表示する(30fps)
-OK  pal(c0, c1, [p]) -- 色0を色1に置き換える. p=0: 描画パレット, p=1: 画面パレット
-X   palt(col, t) -- 指定した色の透過処理をt(ブール値)に設定する
-X   pget(x, y) -- ピクセルの色を取得する
-OK  pset(x, y, [col]) -- ピクセルの色を設定する
-OK  rect(x0, y0, x1, y1, [col]) -- 矩形を描画する
-OK  rectfill(x0, y0, x1, y1, [col]) -- 塗りつぶされた矩形を描画する
-OK  spr(n, x, y, [w, h], [flip_x], [flip_y]) -- スプライトを描画する
-
-OK  NEW setz
-OK  NEW poly
+  TODO: Comparison table with original PICO-8
+  TODO: Standardize naming with tget / tset
+  TODO: Implement sset(x, y, [col]) -- Sets the color of a pixel on the sprite sheet
 */
-
 namespace pico8 {
 
 #define MUST(cond, errcode) \
@@ -412,7 +337,7 @@ namespace pico8 {
      * @param flip_x If true, the sprite is drawn inverted left to right. The default is false.
      * @param flip_y If true, the sprite is drawn inverted top to bottom. The default is false.
      * @param selpal The palette selection for the sprite. The default is 0.
-     * 
+    
      * @note Only bank 0 is accessible for this function, limiting `n` to the range [0, 255]. The BEEP-8 
      *       system’s VRAM is divided into 16 banks of 128x128 pixels each, arranged in a 4x4 grid. While 
      *       other functions may access these additional banks, `spr()` is restricted to bank 0.
