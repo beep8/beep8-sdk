@@ -55,6 +55,9 @@ class _Pico8 : public Pico8 {
     pos_foo.set(64,64);
   }
 
+  // 1/60秒毎に呼び出されます
+  // 内部ステータスの更新のみを実行できます。
+  // 描画系は出来ません。
   void  _update(){
     ++frame;
     if( btn( BUTTON_LEFT ) ){
@@ -93,49 +96,44 @@ class _Pico8 : public Pico8 {
 #endif
   }
 
+  // 1/60秒毎に呼び出されます
+  // 内部ステータスの描画をします。
   void  _draw(){
+    // カメラ状態を初期化します
     camera();
+    // 画面全体を LIGHT_PEACH で単色クリアします
     cls( LIGHT_PEACH );
 
+    // 奥行き情報をセットします。
     setz( maxz() );
+
+    // 描画対象クリッピングを初期化します
     clip();
 
-    setz(0);
-    clip();
-
-    setz( maxz()-1 );
-#if 0
-    Rect rc;
-    rc.x = rc.y = 10;
-    rc.w = 128-rc.x*2;
-    rc.h = 224-rc.y*2;
-    color( WHITE );
-    rect    (rc.x-1,rc.y-1,rc.x + rc.w,rc.y + rc.h,BLACK);
-    rectfill(rc.x,rc.y,rc.x + rc.w,rc.y + rc.h);
-    clip(rc.x,rc.y,rc.w,rc.h);
-#endif
-
-    setz( maxz() );
-    camera();
-
+    // カメラ位置をFoo君の座標から(64,64)だけ左上にセットします。
     cam = pos_foo - Vec(64,64);
 
-    map(cam.x,cam.y,BG_0);
     camera(cam.x,cam.y);
+    // BG面(MAP)をカメラ位置を渡して描画します。
+    map(cam.x,cam.y,BG_0);
+
+    // 奥行き設定を手前にします。
     setz( maxz()/2 );
 
+    // パレット設定します
     const u8 palsel = 1;
     pal(WHITE,BLACK,palsel);
 
+    // 黄色い丸顔なFoo君をSpriteで描画します
     spr(16,pos_foo.x,pos_foo.y,1,1,v_foo.x<0,false);
 
-    auto db = stat( 1000 );
+    // mode の値によって描画サンプルを切り替えます
+    // mode の値は PC キーボードの 'z' によって操作します
     switch( mode ){
       case  0:
-        //spr(16+256,43,55, 5,4,false,true,palsel);
-        //sprb(1,16,43,55, 5,4,false,true,palsel);
         break;
 
+      // 三角形描画サンプル
       case  1:{
         Poly pol;
         pol.pos0.set(10,47);
@@ -145,6 +143,7 @@ class _Pico8 : public Pico8 {
         poly(20,119,123,199,38,177,RED );
       }break;
 
+      // 単色塗りつぶし、点描画、矩形描画サンプル
       case 2:{
         rectfill(fx8(10),fx8(10),fx8(130),fx8(200),BLUE);
         rectfill(20,30,fx8(50),122,RED);
@@ -153,11 +152,13 @@ class _Pico8 : public Pico8 {
         rect(120,100,23,23,DARK_GREEN);
       }break;
 
+      // 円描画サンプル
       case 3:{
         circ(fx8(64), fx8(63), 100 ,PINK );
         circfill(fx8(87), fx8(77), 30 , ORANGE);
       }break;
 
+      // 線分描画サンプル
       case 4:{
         line(fx8(30),fx8(30),fx8(100),fx8(160),RED);
         line(fx8(30),fx8(10),fx8(198),fx8(11),RED);
@@ -169,9 +170,9 @@ class _Pico8 : public Pico8 {
         break;
     }
 
-    const auto diff = stat( 1000 ) - db;
+    // カーソル位置を(4,4)、色をWHITEに設定
     scursor(4,4,WHITE,0);
-    sprint("mode=%d db=%d\n",mode, diff );
+    sprint("mode=%d\n",mode );
 
     const fx8 cx = 64;
     const fx8 cy = 128;
