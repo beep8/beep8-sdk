@@ -57,16 +57,22 @@
 2. **Build a Sample Application:**
    Navigate to the SDK directory and run make:
    ```bash
-   cd beep8-sdk
+   cd ./beep8-sdk/sdk/app/pico8_example
+   make clean
    make
    ```
 
 3. **Run the Emulator:**
-   Open the emulator by navigating to a URL similar to the following in your browser:
+   In your terminal, change to the example directory and run:
+   
    ```bash
-   https://beep8.org/b8/beep8.html?b8rom=your_app.b8
+   cd ./beep8-sdk/sdk/app/pico8_example
+   make run
    ```
-   > **Note:** In BEEP-8, output from `printf()` is not rendered on the screen—it is directed to the debug console (the log panel on the right side of the emulator UI).
+
+   This command launches the built BEEP‑8 ROM (`b8rom`) in your default web browser. BEEP‑8 uses Google Chrome by default, so ensure Chrome is installed on your system.
+   
+   > **Note:** In BEEP‑8, output from `printf()` is not rendered on‑screen—it appears in the debug console (the log panel on the right side of the emulator UI).
 
 ---
 
