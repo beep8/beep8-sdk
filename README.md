@@ -7,31 +7,43 @@
 ## Features
 
 - **Emulated CPU:** ARM v4T running at a fixed 2 MHz.  
-  - Based on an architecture originating in the mid-1990s.
+  - Based on an architecture originating in the mid-1990s.  
   - Compilable using GNU ARM GCC and supports C++20.
+
 - **Memory:** 1 MB of RAM.
+
+- **ROM Limit:** Maximum size is **1024 KB** per game.
+
 - **Display:** A 128×240 pixel vertical screen with a fixed 16-color palette.  
   - Fully compatible with the original PICO-8 16-color palette.
-- **Audio Engine (APU):**
-  - Real-time sound synthesis using a Namco C30–style model.
+
+- **Audio Engine (APU):**  
+  - Real-time sound synthesis using a Namco C30–style model.  
   - Configured with **8 channels** (initial version).
-- **Custom RTOS (`b8OS`):**
-  - A lightweight real-time operating system handles threading, semaphores, system calls, and interrupt management.
+
+- **Custom RTOS (`b8OS`):**  
+  - A lightweight real-time operating system handles threading, semaphores, system calls, and interrupt management.  
   - Its design allows developers to focus on game creation without worrying about OS-level details.
-- **Peripheral I/O:**
-  - Fully supports keyboard, mouse, and **touch inputs (スマホのタッチ操作に対応)** via a dedicated HIF module.
-- **Development Environment:**
-  - Upper-level developers can directly control virtual hardware.
-  - Alternatively, a PICO-8-like C/C++ library is available for rapid development.
+
+- **Peripheral I/O:**  
+  - Fully supports keyboard, mouse, and **touch inputs** via a dedicated HIF module.
+
+- **Development Environment:**  
+  - Upper-level developers can directly control virtual hardware (e.g., PPU, APU, I/O registers).  
+  - Alternatively, a PICO-8-like C/C++ library is available for rapid development.  
   - All C/C++ source code is fully open and available for modification.
-- **Browser-Based Execution:**
-  - The emulator runs in major browsers (Chrome, Safari, Firefox, Edge) on PC, iPhone, iPad, Android, and virtually any device.
+
+- **Browser-Based Execution:**  
+  - The emulator runs in major browsers (Chrome, Safari, Firefox, Edge) on PC, iPhone, iPad, Android, and virtually any device.  
   - WebGL is employed to guarantee a consistent 60fps performance.
-- **Distribution:**
-  - Completed games are delivered as a single ROM file.
+
+- **Distribution:**  
+  - Completed games are delivered as a single ROM file.  
   - Anyone can publish their games on the BEEP-8 portal site.
-- **Cost:**
+
+- **Cost:**  
   - The SDK is completely free to use, and game releases are free as well.
+
 
 ---
 
