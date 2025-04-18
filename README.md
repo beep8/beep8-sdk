@@ -17,12 +17,22 @@
 
 - **ROM Limit:** Maximum size is **1024 KB** per game.
 
-- **Display:** A 128×240 pixel vertical screen with a fixed 16-color palette.  
-  - Fully compatible with the original PICO-8 16-color palette.
+- **PPU (Pixel Processing Unit):** Handles all rendering operations including background layers, sprites, and shape drawing.  
+– Drives the 128×240 pixel display using a fixed 16-color palette.  
+– Shares access to 128 KB of VRAM with both BG and sprite patterns (4 bpp, 512×512 layout).
 
-- **Audio Engine (APU):**  
-  - Real-time sound synthesis using a Namco C30–style model.  
-  - Configured with **8 channels** (initial version).
+- **APU (Audio Processing Unit):** Emulates a Namco C30-style sound engine.  
+– Supports 8 audio channels with real-time synthesis.  
+– Provides retro-style sound effects and music playback.
+
+- **HIF (Human Interface):** Manages keyboard, mouse, and touch input.  
+– Converts browser input events into system-level signals.  
+– Ideal for both PC and mobile web environments.
+
+- **TMR (Timer Module):** Provides high-precision system timing for scheduling and interrupts.  
+– Drives periodic system tasks at a consistent 60 Hz tick rate.  
+– Integrated with the custom RTOS (`b8OS`) for real-time operations.
+
 
 - **Custom RTOS (`b8OS`):**  
   - A lightweight real-time operating system handles threading, semaphores, system calls, and interrupt management.  
