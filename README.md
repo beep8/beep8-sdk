@@ -55,12 +55,18 @@
    ```
 
 2. **Build a Sample Application:**
-   Navigate to the SDK directory and run make:
-   ```bash
-   cd ./beep8-sdk/sdk/app/pico8_example
-   make clean
-   make
-   ```
+    BEEP‑8 applications are built by directly manipulating the virtual hardware registers in C/C++. 
+    There is no predefined framework—developers can code in any style using custom libraries or modules.
+    Full support up to C++20, including the STL, means that most existing C++ libraries can be
+    built and run on BEEP‑8.
+
+    At the same time, we also provide a PICO‑8–style sample library for developers familiar with PICO‑8 game development to use.
+    Navigate to the SDK directory and run make:
+    ```bash
+    cd ./beep8-sdk/sdk/app/pico8_example
+    make clean
+    make
+    ```
 
 3. **Run the Emulator:**
    In your terminal, change to the example directory and run:
