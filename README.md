@@ -5,12 +5,15 @@
 ---
 
 ## Features
+## System Block Diagram
+
+![BEEP-8 Block Diagram](doc/img/BEEP-8_BLOCK.png)
 
 - **Emulated CPU:** ARM v4T running at a fixed 2 MHz.  
   - Based on an architecture originating in the mid-1990s.  
   - Compilable using GNU ARM GCC and supports C++20.
 
-- **Memory:** 1 MB of RAM.
+- **Memory:** Main RAM is 1 MB and VRAM is 128 KB (shared for BG and sprite patterns, 4 bpp, 512×512).
 
 - **ROM Limit:** Maximum size is **1024 KB** per game.
 
