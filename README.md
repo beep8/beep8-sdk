@@ -37,8 +37,6 @@
   - A lightweight real-time operating system handles threading, semaphores, system calls, and interrupt management.  
   - Its design allows developers to focus on game creation without worrying about OS-level details.
 
-- **Peripheral I/O:**  
-
 - **Development Environment:**  
   - Advanced developers can directly control virtual hardware components (e.g., PPU, APU, I/O registers).  
   - Alternatively, a PICO-8-like C/C++ library is available for rapid development.  

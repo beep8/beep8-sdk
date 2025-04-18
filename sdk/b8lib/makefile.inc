@@ -177,6 +177,10 @@ CFLAGS += -Wshadow -Wundef
 
 CFLAGS += -fno-strength-reduce
 
+# Disable GCC strict-aliasing optimizations to prevent undefined behavior when type-punning via pointer casts.
+# Removing this flag is dangerous and not recommended.
+CFLAGS += -fno-strict-aliasing
+
 # The -fomit-frame-pointer option is a compiler option used with the GCC (GNU Compiler Collection)
 # to instruct the compiler to omit the frame pointer for function calls. 
 # The frame pointer is used for accessing local variables 
