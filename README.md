@@ -25,7 +25,7 @@
 – Supports 8 audio channels with real-time synthesis.  
 – Provides retro-style sound effects and music playback.
 
-- **HIF (Human Interface):** Manages keyboard, mouse, and touch input.  
+- **HIF (Human Interface):** Fully supports keyboard, mouse, and **touch inputs** via a dedicated HIF module.
 – Converts browser input events into system-level signals.  
 – Ideal for both PC and mobile web environments.
 
@@ -33,22 +33,21 @@
 – Drives periodic system tasks at a consistent 60 Hz tick rate.  
 – Integrated with the custom RTOS (`b8OS`) for real-time operations.
 
-
 - **Custom RTOS (`b8OS`):**  
   - A lightweight real-time operating system handles threading, semaphores, system calls, and interrupt management.  
   - Its design allows developers to focus on game creation without worrying about OS-level details.
 
 - **Peripheral I/O:**  
-  - Fully supports keyboard, mouse, and **touch inputs** via a dedicated HIF module.
 
 - **Development Environment:**  
-  - Upper-level developers can directly control virtual hardware (e.g., PPU, APU, I/O registers).  
+  - Advanced developers can directly control virtual hardware components (e.g., PPU, APU, I/O registers).  
   - Alternatively, a PICO-8-like C/C++ library is available for rapid development.  
   - All C/C++ source code is fully open and available for modification.
 
 - **Browser-Based Execution:**  
   - The emulator runs in major browsers (Chrome, Safari, Firefox, Edge) on PC, iPhone, iPad, Android, and virtually any device.  
-  - WebGL is employed to guarantee a consistent 60fps performance.
+  - WebGL is employed to guarantee a consistent 60 fps performance—even on older devices such as the iPhone 6.  
+  - As part of the future roadmap, official support for Nintendo Switch is also under active development.
 
 - **Distribution:**  
   - Completed games are delivered as a single ROM file.  
