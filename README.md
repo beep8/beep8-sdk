@@ -51,7 +51,8 @@
 
 - **Distribution:**  
   - Completed games are delivered as a single ROM file.  
-  - Anyone can publish their games on the BEEP-8 portal site.
+  - Developers can release their games on the official BEEP‑8 portal site: [https://beep8.org](https://beep8.org)  
+  - The portal serves as a shared space where everyone can upload, discover, and play games created by the community.
 
 - **Cost:**  
   - The SDK is completely free to use, and game releases are free as well.
