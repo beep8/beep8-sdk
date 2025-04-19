@@ -4,7 +4,7 @@
 
 <p align="center">
   <video width="100%" controls>
-    <source src="https://beep8.github.io/beep8-sdk/img/intro.mov" type="video/quicktime">
+    <source src="docs/img/intro.mov" type="video/quicktime">
     Your browser does not support the video tag.
   </video>
 </p>
