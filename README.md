@@ -3,10 +3,8 @@
 </p>
 
 <p align="center">
-  <img src="docs/img/intro.gif" alt="BEEP-8 Logo" />
+  <img src="docs/img/intro.gif" alt="Intro Demo" width="60%" />
 </p>
-
-
 
 # BEEP-8 SDK
 
