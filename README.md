@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/img/BEEP-8-LOGO.png" alt="BEEP-8 Logo" width="50%" />
+  <img src="docs/img/BEEP-8-LOGO.png" alt="BEEP-8 Logo" width="10%" />
 </p>
 
 
