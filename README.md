@@ -2,6 +2,12 @@
   <img src="docs/img/BEEP-8-LOGO.png" alt="BEEP-8 Logo" width="10%" />
 </p>
 
+<p align="center">
+  <video width="100%" controls>
+    <source src="https://beep8.github.io/beep8-sdk/img/intro.mov" type="video/quicktime">
+    Your browser does not support the video tag.
+  </video>
+</p>
 
 # BEEP-8 SDK
 
