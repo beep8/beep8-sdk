@@ -114,6 +114,19 @@ The SDK repository is organized as follows:
 Each tool and library is designed to streamline development, but most are optional unless you're preparing a ROM for public release.
 
 1. **Build a Sample Application:**<br>
+    Each sample can be built independently, or all at once using the `Makefile` or `build_all.sh` script. These examples cover both low-level and high-level use cases of the SDK.
+
+```
+    ├── build_all.sh     Builds all sample applications
+    ├── bgprint/         Prints text to the BG (background) layer
+    ├── hello/           "Hello World" sample
+    ├── helper_nesctrl/  Emulates a Nintendo Entertainment System (NES) controller using touchscreen input
+    ├── pico8_example/   Sample using the PICO‑8–like compatibility library
+    ├── pico8_app/       Application sample using the PICO‑8–style API
+    ├── ppu_example/     Direct control of the BEEP‑8 PPU (Pixel Processing Unit)
+    └── touch/           Sample demonstrating touchscreen input handling
+```
+
     BEEP‑8 applications are built by directly manipulating the virtual hardware registers in C/C++. 
     There is no predefined framework—developers can code in any style using custom libraries or modules.
     Full support up to C++20, including the STL, means that most existing C++ libraries can be
