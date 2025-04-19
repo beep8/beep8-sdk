@@ -163,8 +163,8 @@ For complete API details, please refer to the header files in the `sdk/b8lib/inc
 
 [API Reference BEEP-8 SDK](https://beep8.github.io/beep8-sdk/api/BEEP8_SDK/html/files.html)<br>
 [API Reference BEEP-8 HELPER LIB](https://beep8.github.io/beep8-sdk/api/BEEP8_HELPER/html/files.html)<br>
-
 [API Reference PICO-8 LIKE LIB](https://beep8.github.io/beep8-sdk/api/BEEP8_HELPER/html/pico8_8h.html)<br>
+
 ---
 
 ## Sample Application
