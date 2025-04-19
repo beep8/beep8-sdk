@@ -59,10 +59,17 @@ The emulator runs directly in modern web browsers—Chrome, Safari, Firefox, Edg
 
 ## Quick Start
 
-1. **Clone the Repository:**
-   ```bash
-   git clone git@github.com:beep8/beep8-sdk.git
-   ```
+You can get started with the SDK in one of the following ways:
+
+- **Option 1: Clone the Repository (Recommended for Git Users)**  
+  ```bash
+  git clone git@github.com:beep8/beep8-sdk.git
+
+- **Option 2: Download as a .tar.gz Archive (No Git Required)
+  Download the latest SDK source code directly as a .tar.gz file:
+  https://github.com/beep8/beep8-sdk/archive/refs/heads/main.tar.gz
+  This is ideal for users who prefer not to use Git. On macOS and Linux, the archive can be extracted with built-in tools.
+  💡 Tip: On Windows, we recommend using 7-Zip to extract .tar.gz archives safely.
 
 2. **Build a Sample Application:**
     BEEP‑8 applications are built by directly manipulating the virtual hardware registers in C/C++. 
