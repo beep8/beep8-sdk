@@ -113,6 +113,8 @@ The SDK repository is organized as follows:
 
 Each tool and library is designed to streamline development, but most are optional unless you're preparing a ROM for public release.
 
+---
+
 1. **Build a Sample Application:**<br>
     Each sample can be built independently, or all at once using the `Makefile` or `build_all.sh` script. These examples cover both low-level and high-level use cases of the SDK.
 
