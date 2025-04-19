@@ -163,7 +163,7 @@ For complete API details, please refer to the header files in the `include/` dir
 - **Other headers:** Provide low-level interfaces for the PPU, APU, and RTOS (`b8OS`).
 
 [API Reference BEEP8 SDK](https://beep8.github.io/beep8-sdk/api/BEEP8_SDK/html/files.html)<br>
-[API Reference BEEP8 HELPER](https://beep8.github.io/beep8-sdk/api/BEEP8_HELPER/html/index.html)<br>
+[API Reference BEEP8 HELPER](https://beep8.github.io/beep8-sdk/api/BEEP8_HELPER/html/files.html)<br>
 
 ---
 
