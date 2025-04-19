@@ -162,7 +162,7 @@ For complete API details, please refer to the header files in the `include/` dir
 - **pico8.h:** Defines the high-level API for graphics, sound, and input.
 - **Other headers:** Provide low-level interfaces for the PPU, APU, and RTOS (`b8OS`).
 
-[API Reference](https://beep8.github.io/beep8-sdk/doc/html/files.html)
+[API Reference](https://beep8.github.io/beep8-sdk/docs/html/files.html)
 
 
 ---
