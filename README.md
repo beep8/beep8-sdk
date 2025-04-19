@@ -162,8 +162,13 @@ For complete API details, please refer to the header files in the `sdk/b8lib/inc
 - **Other headers:** Provide low-level interfaces for the PPU, APU, and RTOS (`b8OS`).
 
 [API Reference BEEP-8 SDK](https://beep8.github.io/beep8-sdk/api/BEEP8_SDK/html/files.html)<br>
+BEEP-8 SDK is the essential library required for developing BEEP-8 applications.<br>
+
 [API Reference BEEP-8 HELPER LIB](https://beep8.github.io/beep8-sdk/api/BEEP8_HELPER/html/files.html)<br>
+BEEP-8 HELPER is not required for developing BEEP-8 applications, but it provides a collection of useful modules that you can freely utilize. Among these modules is a PICO-8–style C/C++ library. Although the original PICO-8 API is designed around Lua and thus differs in certain assumptions from C/C++, the API specification has been kept as compatible as possible, making it intuitive for PICO-8 developers.
+
 [API Reference PICO-8 LIKE LIB](https://beep8.github.io/beep8-sdk/api/BEEP8_HELPER/html/pico8_8h.html)<br>
+
 
 ---
 
