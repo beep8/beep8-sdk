@@ -158,13 +158,13 @@ Each tool and library is designed to streamline development, but most are option
 
 ## API Documentation
 
-For complete API details, please refer to the header files in the `include/` directory. Key headers include:
-- **pico8.h:** Defines the high-level API for graphics, sound, and input.
+For complete API details, please refer to the header files in the `sdk/b8lib/include/` directory. Key headers include:
 - **Other headers:** Provide low-level interfaces for the PPU, APU, and RTOS (`b8OS`).
 
-[API Reference BEEP8 SDK](https://beep8.github.io/beep8-sdk/api/BEEP8_SDK/html/files.html)<br>
-[API Reference BEEP8 HELPER](https://beep8.github.io/beep8-sdk/api/BEEP8_HELPER/html/files.html)<br>
+[API Reference BEEP-8 SDK](https://beep8.github.io/beep8-sdk/api/BEEP8_SDK/html/files.html)<br>
+[API Reference BEEP-8 HELPER LIB](https://beep8.github.io/beep8-sdk/api/BEEP8_HELPER/html/files.html)<br>
 
+[API Reference PICO-8 LIKE LIB](https://beep8.github.io/beep8-sdk/api/BEEP8_HELPER/html/pico8_8h.html)<br>
 ---
 
 ## Sample Application
