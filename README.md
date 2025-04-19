@@ -85,7 +85,37 @@ You can get started with the SDK in one of the following ways:
   the archive can be extracted with built-in tools.<br>
   💡 Tip: On Windows, we recommend using 7-Zip to extract .tar.gz archives safely.<br>
 
-2. **Build a Sample Application:**<br>
+### Directory Structure
+
+The SDK repository is organized as follows:
+
+```
+├── README.md             # This file
+├── doc/                  # Documentation
+├── gnuarm/               # Prebuilt GNU ARM GCC toolchains for each supported platform
+│   ├── Windows_NT/
+│   ├── linux/
+│   └── osx/
+├── sdk/                  # Main SDK components
+│   ├── app/              # Sample BEEP-8 applications and build targets
+│   ├── b8helper/         # Optional utility libraries to assist BEEP-8 app development
+│   └── b8lib/            # Core BEEP-8 SDK implementation
+├── setenv.bat            # Windows script to add make to the system PATH
+└── tool/                 # Development tools
+    ├── busybox/          # BusyBox for UNIX-like command support on Windows
+    ├── ccache/           # Compiler cache to speed up rebuilds
+    ├── genb8rom/         # Tool for generating BEEP-8 ROM filesystem images
+    ├── geninstcard/      # Tool for generating thumbnail images for BEEP-8 ROMs
+    ├── make/             # Windows-compatible make.exe, path set via setenv.bat
+    ├── png2c/            # Optional PNG-to-C array converter for asset embedding
+    ├── relb8rom/         # Tool for packaging final release ROMs (required for distribution)
+    └── scripts/          # Helper scripts for automating app development tasks
+```
+
+Each tool and library is designed to streamline development, but most are optional unless you're preparing a ROM for public release.
+
+
+1. **Build a Sample Application:**<br>
     BEEP‑8 applications are built by directly manipulating the virtual hardware registers in C/C++. 
     There is no predefined framework—developers can code in any style using custom libraries or modules.
     Full support up to C++20, including the STL, means that most existing C++ libraries can be
@@ -99,7 +129,7 @@ You can get started with the SDK in one of the following ways:
     make
     ```
 
-3. **Run the Emulator:**
+2. **Run the Emulator:**
    In your terminal, change to the example directory and run:
    
    ```bash
