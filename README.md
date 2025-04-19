@@ -1,6 +1,8 @@
 # BEEP-8 SDK
 
-**BEEP-8** is a virtual retro game console designed for developing C/C++ applications. It runs on an emulated ARM v4 CPU at a fixed 2 MHz and is optimized for vertical smartphone displays. The SDK provides a two-layer architecture: you can access the hardware (H/W) directly using low-level APIs, or you can use a high-level C/C++ library (PICO-8 for C/C++) for simpler, more abstracted development.
+**BEEP-8** is a virtual retro game console designed for developing C/C++ applications. It runs on an emulated ARM v4 CPU at a fixed 2 MHz and is optimized for vertical smartphone displays. The SDK adopts a two-layer architecture: at the low level, developers can directly access hardware (H/W) through minimal APIs. At the high level, developers are free to choose their own structure, frameworks, or libraries to build applications. A PICO‑8–like C/C++ library is provided as one such option for rapid and familiar development, but it is entirely optional.
+
+The emulator runs directly in modern web browsers—Chrome, Safari, Firefox, Edge—across PCs, iPhones, iPads, Android devices, and virtually any platform. WebGL ensures a consistent 60 fps experience, even on older devices such as the iPhone 6. As part of its roadmap, BEEP‑8 is also being extended with official support for the Nintendo Switch platform.
 
 ---
 
@@ -34,18 +36,15 @@
 – Integrated with the custom RTOS (`b8OS`) for real-time operations.
 
 - **Custom RTOS (`b8OS`):**  
-  - A lightweight real-time operating system handles threading, semaphores, system calls, and interrupt management.  
-  - Its design allows developers to focus on game creation without worrying about OS-level details.
+  - A lightweight real-time operating system that supports multi-threading, semaphores, interrupt handlers, and a simple in-memory file system.  
+  - Designed to provide a minimal set of UNIX-like APIs tailored for game development.  
+  - Enables asynchronous components, such as sound drivers operating independently from the main thread, to be implemented with ease.
+  - Its architecture allows developers to focus on gameplay logic without dealing with complex OS-level implementation details.
 
 - **Development Environment:**  
   - Advanced developers can directly control virtual hardware components (e.g., PPU, APU, I/O registers).  
   - Alternatively, a PICO-8-like C/C++ library is available for rapid development.  
   - All C/C++ source code is fully open and available for modification.
-
-- **Browser-Based Execution:**  
-  - The emulator runs in major browsers (Chrome, Safari, Firefox, Edge) on PC, iPhone, iPad, Android, and virtually any device.  
-  - WebGL is employed to guarantee a consistent 60 fps performance—even on older devices such as the iPhone 6.  
-  - As part of the future roadmap, official support for Nintendo Switch is also under active development.
 
 - **Distribution:**  
   - Completed games are delivered as a single ROM file.  
