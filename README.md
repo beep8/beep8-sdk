@@ -59,6 +59,19 @@ While the CPU is a 32-bit processor, the VDP (video display processor) and APU (
 
 ## Quick Start
 
+### Supported Platforms
+
+The BEEP‑8 SDK is cross-platform and supports the following environments:
+
+- **Windows** (Command Prompt / PowerShell)
+- **macOS (Intel)**  
+- **macOS (Apple Silicon / M1, M2, M3, etc.)**
+- **Linux** (including **Windows WSL2**, which is treated as a Linux environment)
+
+No external toolchain installation is required—the SDK includes prebuilt compilers for all supported platforms. Simply use the provided `make` command to build applications with the bundled C++20-capable toolchain.
+
+---
+
 You can get started with the SDK in one of the following ways:
 
 - **Option 1: Clone the Repository (Recommended for Git Users)**  
@@ -72,7 +85,7 @@ You can get started with the SDK in one of the following ways:
   the archive can be extracted with built-in tools.<br>
   💡 Tip: On Windows, we recommend using 7-Zip to extract .tar.gz archives safely.<br>
 
-2. **Build a Sample Application:**
+2. **Build a Sample Application:**<br>
     BEEP‑8 applications are built by directly manipulating the virtual hardware registers in C/C++. 
     There is no predefined framework—developers can code in any style using custom libraries or modules.
     Full support up to C++20, including the STL, means that most existing C++ libraries can be
