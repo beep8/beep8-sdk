@@ -1,6 +1,9 @@
-# BEEP-8 SDK
+<p align="center">
+  <img src="docs/img/BEEP-8-LOGO.png" alt="BEEP-8 Logo" />
+</p>
 
-![BEEP-8 Logo](docs/img/BEEP-8-LOGO.png)
+
+# BEEP-8 SDK
 
 **BEEP-8** is a virtual retro game console designed for developing C/C++ applications. It runs on an emulated ARM v4 CPU at a fixed 2 MHz and is optimized for vertical smartphone displays. The SDK adopts a two-layer architecture: at the low level, developers can directly access hardware (H/W) through minimal APIs. At the high level, developers are free to choose their own structure, frameworks, or libraries to build applications. A PICO‑8–like C/C++ library is provided as one such option for rapid and familiar development, but it is entirely optional.
 
