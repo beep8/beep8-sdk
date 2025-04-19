@@ -3,13 +3,9 @@
 </p>
 
 <p align="center">
-  <video width="100%" controls>
-    <source src="docs/img/intro.mov" type="video/quicktime">
-    Your browser does not support the video tag.
-  </video>
+  <img src="docs/img/intro.gif" alt="BEEP-8 Logo" />
 </p>
 
-[▶️ 動画を自動再生で開く](https://www.youtube.com/embed/63hIsjyxAGA?autoplay=1&mute=1)
 
 
 # BEEP-8 SDK
