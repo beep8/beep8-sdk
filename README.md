@@ -65,11 +65,12 @@ You can get started with the SDK in one of the following ways:
   ```bash
   git clone git@github.com:beep8/beep8-sdk.git
 
-- **Option 2: Download as a .tar.gz Archive (No Git Required)**
+- **Option 2: Download as a .tar.gz Archive (No Git Required)**<br>
   Download the latest SDK source code directly as a .tar.gz file:<br>
   https://github.com/beep8/beep8-sdk/archive/refs/heads/main.tar.gz<br>
-  This is ideal for users who prefer not to use Git. On macOS and Linux, the archive can be extracted with built-in tools.<br>
-  💡 Tip: On Windows, we recommend using 7-Zip to extract .tar.gz archives safely.
+  This is ideal for users who prefer not to use Git. On macOS and Linux,<br>
+  the archive can be extracted with built-in tools.<br>
+  💡 Tip: On Windows, we recommend using 7-Zip to extract .tar.gz archives safely.<br>
 
 2. **Build a Sample Application:**
     BEEP‑8 applications are built by directly manipulating the virtual hardware registers in C/C++. 
