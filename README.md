@@ -4,10 +4,7 @@
 
 While the CPU is a 32-bit processor, the VDP (video display processor) and APU (audio processing unit) are modeled after simpler 8-bit–era virtual devices, striking a balance between modern programmability and nostalgic hardware constraints.
 
----
-
-## Features
-## System Block Diagram
+## BEEP-8 System Block Diagram
 
 ![BEEP-8 Block Diagram](doc/img/BEEP-8_BLOCK.png)
 
@@ -85,6 +82,8 @@ You can get started with the SDK in one of the following ways:
   the archive can be extracted with built-in tools.<br>
   💡 Tip: On Windows, we recommend using 7-Zip to extract .tar.gz archives safely.<br>
 
+---
+
 ### Directory Structure
 
 The SDK repository is organized as follows:
@@ -113,7 +112,6 @@ The SDK repository is organized as follows:
 ```
 
 Each tool and library is designed to streamline development, but most are optional unless you're preparing a ROM for public release.
-
 
 1. **Build a Sample Application:**<br>
     BEEP‑8 applications are built by directly manipulating the virtual hardware registers in C/C++. 
