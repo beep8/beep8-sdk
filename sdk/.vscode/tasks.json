@@ -1,0 +1,27 @@
+{
+   "version": "2.0.0",
+   "tasks": [
+      {
+         "label": "Build C Project",
+         "type": "shell",
+         "command": "make",
+         "args": ["-C", "./app/pico8_example/"],
+         "group": {
+            "kind": "build",
+            "isDefault": true
+         },
+         "problemMatcher": {
+            "owner": "cpp",
+            "fileLocation": ["relative", "./app/pico8_example/"], // 相対パスで指定
+            "pattern": {
+               "regexp": "^(.*):([0-9]+):([0-9]+):\\s+(error|warning):\\s+(.*)$",
+               "file": 1,
+               "line": 2,
+               "column": 3,
+               "severity": 4,
+               "message": 5
+            }
+         }
+      }
+   ]
+}

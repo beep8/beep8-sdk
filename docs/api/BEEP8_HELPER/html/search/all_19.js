@@ -1,0 +1,28 @@
+var searchData=
+[
+  ['r_20fx8_204_20color_20col_20current_20tt_0',['Function: &lt;tt&gt;circ(fx8 x, fx8 y, fx8 r = fx8(4), Color col = CURRENT)&lt;/tt&gt;',['../md_include_2_p_i_c_o8___a_p_i___b_e_e_p8.html#autotoc_md61',1,'']]],
+  ['rad_5fcos_5f12_1',['rad_cos_12',['../submath_8h.html#ad5ff14a75c4d134a66838421350deee6',1,'submath.cpp']]],
+  ['rad_5fsin_5f12_2',['rad_sin_12',['../submath_8h.html#a23cd8ee88ba34b3c34047eafa7518a1e',1,'submath.cpp']]],
+  ['radius_5fpix_3',['radius_pix',['../class_cfg_nes_ctrl.html#a137999fb97fd97725e7c151bd06a2dc5',1,'CfgNesCtrl']]],
+  ['rect_4',['Rect',['../struct_rect.html',1,'']]],
+  ['rect_5',['rect',['../pico8_8h.html#a8b613610b2bb1686e690342af220f1ae',1,'pico8']]],
+  ['rectfill_6',['rectfill',['../pico8_8h.html#adee1dd9afe607d945c7cbeb0bd8c3f8e',1,'pico8']]],
+  ['rectfill_20fx8_20x0_20fx8_20y0_20fx8_20x1_20fx8_20y1_20color_20color_20current_20tt_7',['Function: &lt;tt&gt;rectfill(fx8 x0, fx8 y0, fx8 x1, fx8 y1, Color color = CURRENT)&lt;/tt&gt;',['../md_include_2_p_i_c_o8___a_p_i___b_e_e_p8.html#autotoc_md59',1,'']]],
+  ['red_8',['RED',['../pico8_8h.html#ac6c7b86a4104cf9323f769a3db36ce1eae7f2c290f5aaedd3886f49bf03300238',1,'pico8']]],
+  ['register_9',['Register',['../class_c_shell_obj.html#ac7c4659da365bed09a4ba44d8ec138f5',1,'CShellObj']]],
+  ['removal_10',['Element Access and Removal',['../array_8h.html#autotoc_md4',1,'']]],
+  ['reqkill_11',['ReqKill',['../class_c_obj.html#a7e4738b300df13e0ea956ce4a8cbf935',1,'CObj']]],
+  ['reset_12',['Reset',['../class_c_nes_ctrl.html#a299e798dcc2bd157de73b2c90e8260cf',1,'CNesCtrl::Reset()'],['../structpico8_1_1_spr_cursor.html#a6d2a9c6024c53833af9394b2c522b140',1,'pico8::SprCursor::Reset()'],['../structpico8_1_1_bg_cursor.html#adeef41a1f30674325ca83c29fe6c825c',1,'pico8::BgCursor::Reset()'],['../namespacesprprint.html#a444f6fb15636534d5d95caec25011653',1,'sprprint::Reset()']]],
+  ['resh_13',['resh',['../pico8_8h.html#a86cd984130a1d6658d1e0597e23dbbf1',1,'pico8']]],
+  ['result_14',['Result',['../classargparse_1_1_argument_parser.html#a842796db0ca99a9683baa326a24483ce',1,'argparse::ArgumentParser']]],
+  ['resw_15',['resw',['../pico8_8h.html#a753e3e9a9d8bf6e3dfcba51dbb6d6931',1,'pico8']]],
+  ['right_16',['RIGHT',['../nesctrl_8h.html#a15a0dab696bd041d08f465ab3c6e0358a21507b40c80068eda19865706fdc2403',1,'nesctrl.h']]],
+  ['rle_17',['Rle',['../namespace_rle.html',1,'']]],
+  ['rle_2eh_18',['rle.h',['../rle_8h.html',1,'']]],
+  ['rnd_19',['rnd',['../pico8_8h.html#af1c2160977342ef32dd486ce7f7e94a7',1,'pico8']]],
+  ['rndf_20',['rndf',['../pico8_8h.html#a193b5f7acaf6849ced6b3b9b70492fac',1,'pico8']]],
+  ['rndi_21',['rndi',['../pico8_8h.html#aead5bffad85cfa48bd420f8f1e061275',1,'pico8']]],
+  ['rndt_22',['rndt',['../pico8_8h.html#a4f71f83aef8cf616f263b8876b9e1f5b',1,'pico8::rndt(std::span&lt; const T &gt; sp)'],['../pico8_8h.html#a41a10eb6102f08b9dbe29fa0b8cc2333',1,'pico8::rndt(const T(&amp;arr)[N])']]],
+  ['rndu_23',['rndu',['../pico8_8h.html#a4ccb149f7c356e83fbcab18807239812',1,'pico8']]],
+  ['run_24',['run',['../classpico8_1_1_pico8.html#a3368bc377e660e9f1a8d8097d79fc965',1,'pico8::Pico8']]]
+];

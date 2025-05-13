@@ -1,0 +1,22 @@
+var searchData=
+[
+  ['pal_0',['PAL',['../struct__b8_ppu_bg_tile.html#acaf2b3dcb433c8727e12a506aa382fda',1,'_b8PpuBgTile']]],
+  ['pal_1',['pal',['../struct__b8_ppu_rect.html#ab0e934509222051d652f19fed97abcc8',1,'_b8PpuRect::pal'],['../struct__b8_ppu_sprite.html#a9eb62a0e6695ab3478a8eaf29810dcd0',1,'_b8PpuSprite::pal'],['../struct__b8_ppu_poly.html#a2d8afbeb37285fee0e0cde278bc44efa',1,'_b8PpuPoly::pal'],['../struct__b8_ppu_line.html#affa659f3d8c73d8a6e62eb9ec0baf65e',1,'_b8PpuLine::pal'],['../struct__b8_ppu_flush.html#aaab056752907fa9a596e554607f7d0a0',1,'_b8PpuFlush::pal']]],
+  ['palsel_2',['palsel',['../struct__b8_ppu_setpal.html#ab88352b540b53507054f91893b0638d7',1,'_b8PpuSetpal']]],
+  ['pidx0_3',['pidx0',['../struct__b8_ppu_setpal.html#a2fe414c14ba93096b95b6c1ae94375ae',1,'_b8PpuSetpal']]],
+  ['pidx1_4',['pidx1',['../struct__b8_ppu_setpal.html#a006c360329d0b7dc055c5b58e56e66df',1,'_b8PpuSetpal']]],
+  ['pidx10_5',['pidx10',['../struct__b8_ppu_setpal.html#a4c3cc27cfae6d3454e36b543e3c59b8d',1,'_b8PpuSetpal']]],
+  ['pidx11_6',['pidx11',['../struct__b8_ppu_setpal.html#a4a617a2745ea8873575610fafa34cf74',1,'_b8PpuSetpal']]],
+  ['pidx12_7',['pidx12',['../struct__b8_ppu_setpal.html#ad34955b012978052b14fe32622ea0f65',1,'_b8PpuSetpal']]],
+  ['pidx13_8',['pidx13',['../struct__b8_ppu_setpal.html#afeaaca88461dff19214e86b4f1d26261',1,'_b8PpuSetpal']]],
+  ['pidx14_9',['pidx14',['../struct__b8_ppu_setpal.html#ad90c49ad6f5dc5541e31542b732aa2bf',1,'_b8PpuSetpal']]],
+  ['pidx15_10',['pidx15',['../struct__b8_ppu_setpal.html#aad27c6f14cc35f3df0eee89fa52c7e73',1,'_b8PpuSetpal']]],
+  ['pidx2_11',['pidx2',['../struct__b8_ppu_setpal.html#aa7ab2842764d801322601ae3d7f5dbcd',1,'_b8PpuSetpal']]],
+  ['pidx3_12',['pidx3',['../struct__b8_ppu_setpal.html#a7eefb0a8eab51e76eecaa8805cbc6871',1,'_b8PpuSetpal']]],
+  ['pidx4_13',['pidx4',['../struct__b8_ppu_setpal.html#a94ebe704a51c5e45f05db9b04d47f0e0',1,'_b8PpuSetpal']]],
+  ['pidx5_14',['pidx5',['../struct__b8_ppu_setpal.html#ad6ceb4dfcdf99a7286ddfbefd3af1004',1,'_b8PpuSetpal']]],
+  ['pidx6_15',['pidx6',['../struct__b8_ppu_setpal.html#a1b23db141ee9b7483462868709477421',1,'_b8PpuSetpal']]],
+  ['pidx7_16',['pidx7',['../struct__b8_ppu_setpal.html#a53afc3fbc6dac2b96a895299395236a1',1,'_b8PpuSetpal']]],
+  ['pidx8_17',['pidx8',['../struct__b8_ppu_setpal.html#a0719f49c38f10968c2bafe47c7facd59',1,'_b8PpuSetpal']]],
+  ['pidx9_18',['pidx9',['../struct__b8_ppu_setpal.html#ac31acaf47bea45d37223a83e1740a882',1,'_b8PpuSetpal']]]
+];
