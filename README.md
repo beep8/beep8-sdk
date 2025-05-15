@@ -216,10 +216,6 @@ Each sample can be built, ROM-generated, and launched with a single script. No `
    - Generate the `.b8` ROM file  
    - Launch the application in your default web browser  
 
-<p align="center">
-  <img src="docs/img/run.png" alt="run" width="100%" />
-</p>
-
 - **Left pane:** the running game  
 - **Right pane:** hidden debug console (your `printf()` output appears here)  
 - To shortcut `run.bat`, define a DOS key macro:
