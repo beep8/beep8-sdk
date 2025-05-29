@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="./img/BEEP-8-LOGO.png" alt="BEEP-8 Logo" width="10%" />
+  <img src="docs/img/BEEP-8-LOGO.png" alt="BEEP-8 Logo" width="10%" />
 </p>
 
 <p align="center">
-  <img src="./img/intro.gif" alt="Intro Demo" width="25%" />
+  <img src="docs/img/intro.gif" alt="Intro Demo" width="25%" />
 </p>
 
 # BEEP-8 SDK
@@ -23,7 +23,7 @@ It also allows developers to create **8-bit-style touch-enabled games**, offerin
 
 ## BEEP-8 System Block Diagram
 
-![BEEP-8 Block Diagram](./img/BEEP-8_BLOCK.png)
+![BEEP-8 Block Diagram](docs/img/BEEP-8_BLOCK.png)
 
 - **Emulated CPU:** ARM v4 running at a fixed 4 MHz.  
   - Based on an architecture originating in the mid-1990s.  
@@ -188,7 +188,7 @@ Each sample can be built, ROM-generated, and launched with a single script. No `
    - Open the application in your default web browser  
 
 <p align="center">
-  <img src="./img/run.png" alt="run" width="100%" />
+  <img src="docs/img/run.png" alt="run" width="100%" />
 </p>
 
 - **Left pane:** the running game  
