@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="docs/img/BEEP-8-LOGO.png" alt="BEEP-8ロゴ" width="10%" />
+  <img src="./img/BEEP-8-LOGO.png" alt="BEEP-8ロゴ" width="10%" />
 </p>
 
 <p align="center">
-  <img src="docs/img/intro.gif" alt="イントロデモ" width="100%" />
+  <img src="./img/intro.gif" alt="イントロデモ" width="100%" />
 </p>
 
 # BEEP-8 SDK
@@ -23,7 +23,7 @@ BEEP-8 はブラウザベースの設計と WebGL／GPU シェーダ最適化に
 
 ## BEEP-8 システム構成図
 
-![BEEP-8 Block Diagram](docs/img/BEEP-8_BLOCK.png)
+![BEEP-8 Block Diagram](./img/BEEP-8_BLOCK.png)
 
 - **エミュレートされた CPU:** ARM v4、固定 4 MHz で動作。  
   - 1990 年代中頃に登場したアーキテクチャに基づく。  
@@ -157,7 +157,7 @@ cd sdk/app/pico8_example
 このコマンドはソースコードとグラフィックデータをコンパイルし、`.b8` ROM を生成し、そのままデフォルトの Web ブラウザで起動します。
 
 <p align="center">
-  <img src="docs/img/run.png" alt="run" width="100%" />
+  <img src="./img/run.png" alt="run" width="100%" />
 </p>
 
 `./run.sh` が正常終了すると、以下のようなブラウザウィンドウが表示されます:  
@@ -169,7 +169,7 @@ cd sdk/app/pico8_example
 - 各実行には固有の URL が割り当てられます。この URL をスマートフォンなどのブラウザにコピー＆ペーストして、リモートで同じアプリを実行できます。
 
 <p align="center">
-  <img src="docs/img/run_iphone.png" alt="run on iPhone" width="30%" />
+  <img src="./img/run_iphone.png" alt="run on iPhone" width="30%" />
 </p>
 
 上級者（Make/CI）向けの詳細な Make ベースの手順は [MAKEFILE.md](MAKEFILE.md) を参照してください。

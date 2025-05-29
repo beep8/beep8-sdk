@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="docs/img/BEEP-8-LOGO.png" alt="BEEP-8 標誌" width="10%" />
+  <img src="./img/BEEP-8-LOGO.png" alt="BEEP-8 標誌" width="10%" />
 </p>
 
 <p align="center">
-  <img src="docs/img/intro.gif" alt="介紹示範" width="100%" />
+  <img src="./img/intro.gif" alt="介紹示範" width="100%" />
 </p>
 
 # BEEP-8 SDK
@@ -23,7 +23,7 @@
 
 ## BEEP-8 系統方塊圖
 
-![BEEP-8 Block Diagram](docs/img/BEEP-8_BLOCK.png)
+![BEEP-8 Block Diagram](./img/BEEP-8_BLOCK.png)
 
 - **模擬 CPU:** ARM v4，固定 4 MHz 運行。  
   - 基於 1990 年代中期出現嘅架構。  
@@ -156,7 +156,7 @@ cd sdk/app/pico8_example
 此命令會編譯所有原始碼與圖形資源，生成 `.b8` ROM，並在預設的 Web 瀏覽器中自動啟動。
 
 <p align="center">
-  <img src="docs/img/run.png" alt="運行截圖" width="100%" />
+  <img src="./img/run.png" alt="運行截圖" width="100%" />
 </p>
 
 當 `./run.sh` 成功執行後，您會看到如下的瀏覽器視窗:  
@@ -168,7 +168,7 @@ cd sdk/app/pico8_example
 - 每次執行會獲得一條唯一的 URL，您可以將該 URL 複製到手機瀏覽器中，遠程運行相同的應用。
 
 <p align="center">
-  <img src="docs/img/run_iphone.png" alt="在 iPhone 上運行" width="30%" />
+  <img src="./img/run_iphone.png" alt="在 iPhone 上運行" width="30%" />
 </p>
 
 進階使用者（Make/CI）：請參考 [MAKEFILE.md](MAKEFILE.md) 獲取完整的 Make 指令說明。
