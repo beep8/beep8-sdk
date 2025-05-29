@@ -3,12 +3,12 @@
 </p>
 
 <p align="center">
-  <img src="./img/intro.gif" alt="介紹示範" width="100%" />
+  <img src="./img/intro.gif" alt="介紹示範" width="30%" />
 </p>
 
 # BEEP-8 SDK
 
-[English](./README.md) | [日本語](./README.ja.md) | [繁體中文（廣東話）](./README.zh-hk.md)
+[English](./index.md) | [日本語](./index.ja.md) | [繁體中文（廣東話）](./index.zh-hk.md)
 
 **BEEP-8** 係一部為 C/C++ 應用程式開發而設嘅虛擬復古遊戲機。佢以模擬 ARM v4 CPU 運行，時脈固定 4 MHz，同時針對垂直智能手機屏幕作咗優化。SDK 採用雙層架構：喺低層，開發人員可以透過最低限度嘅 API 直接存取硬體（H/W）；喺高層，開發人員可以自由揀選自己嘅結構、框架或者函式庫去構建應用程式。亦提供咗一個類似 PICO‑8 嘅 C/C++ 函式庫，方便快速又熟悉嘅開發，但呢個全層面都係可選擇嘅。
 
