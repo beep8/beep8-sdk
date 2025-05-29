@@ -1,3 +1,9 @@
+---
+title: BEEP-8 SDK: Retro Game Console in C++
+description: Official SDK for BEEP-8 — a web-based fantasy console for C++ developers, inspired by PICO-8 and retro 8-bit hardware.
+keywords: BEEP-8, PICO-8, fantasy console, C++ game dev, retro game SDK, ARM emulator
+---
+
 <p align="center">
   <img src="docs/img/BEEP-8-LOGO.png" alt="BEEP-8 Logo" width="10%" />
 </p>
