@@ -80,7 +80,6 @@ It also allows developers to create **8-bit-style touch-enabled games**, offerin
 - **Cost:**  
   - The SDK is completely free to use, and game releases are free as well.
 
----
 
 ## Quick Start
 
@@ -97,7 +96,6 @@ The BEEP-8 SDK is cross-platform and supports the following environments:
 
 On most platforms, no external toolchain installation is required—the SDK includes prebuilt compilers for all supported platforms.
 
----
 
 ### Download
 
@@ -126,11 +124,9 @@ You can get started with the SDK in one of the following ways:
 
   💡 On Windows, we recommend using [7-Zip](https://www.7-zip.org/) to extract `.tar.gz` archives properly.
 
----
 
 We strongly recommend using **Option 1** (Git) unless you have a specific reason to avoid Git.
 
----
 
 ### Directory Structure
 
@@ -159,7 +155,6 @@ The SDK repository is organized as follows:
     └── scripts/          # Helper scripts for automating app development tasks
 ```
 
----
 
 ### Build a Sample Application
 
@@ -181,7 +176,6 @@ sdk/                   # Main SDK components
 
 Each sample can be built, ROM-generated, and launched with a single script. No `make` is required unless you prefer it.
 
----
 
 #### macOS / Linux (Bash)
 
@@ -210,7 +204,6 @@ Each sample can be built, ROM-generated, and launched with a single script. No `
   ```
 - Each run gets a unique URL—you can paste it into any device’s browser to play remotely.  
 
----
 
 #### Windows (Command Prompt)
 
@@ -235,13 +228,11 @@ Each sample can be built, ROM-generated, and launched with a single script. No `
   ```
 - Each run gets a unique URL—you can paste it into any device’s browser to play remotely.  
 
----
 
 **Advanced users (Make/CI):** see [MAKEFILE.md](MAKEFILE.md) for full Make-based instructions.
 
 
 
----
 
 #### Sample Application Directory Structure
 
@@ -265,7 +256,6 @@ pico8_example
 - The `romfs/instcard.jpg` file serves as the title image in the distributed ROM.
 - Unlike PICO‑8, **BEEP‑8 does not include built-in image editors**; use your preferred graphics tool with the BEEP‑8 palette.
 
----
 
 ## API Documentation
 
@@ -287,7 +277,6 @@ It mimics the original PICO-8 API as closely as possible while adapting it to C/
 The goal is to make the development experience familiar for PICO-8 users, while still leveraging the performance and flexibility of native code.  
 You can build full games using this library with minimal knowledge of the underlying hardware.
 
----
 
 ## How to Release a BEEP-8 App
 
@@ -296,13 +285,11 @@ You can build full games using this library with minimal knowledge of the underl
 
 [RELEASE.md](RELEASE.md)
 
----
 
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for details.
 
----
 
 ## Contact
 
@@ -310,6 +297,5 @@ This project is licensed under the MIT License. See the LICENSE file for details
 - **Website:** [https://beep8.org](https://beep8.org)
 - **Bluesky:** [@beep8-official.bsky.social](https://bsky.app/profile/beep8-official.bsky.social)
 
----
 
 *Happy coding with BEEP-8!*
