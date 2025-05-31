@@ -293,9 +293,9 @@ This project is licensed under the MIT License. See the LICENSE file for details
 
 ## Contact
 
-- **Email:** [beep8.official@gmail.com](mailto:beep8.official@gmail.com)
-- **Website:** [https://beep8.org](https://beep8.org)
-- **Bluesky:** [@beep8-official.bsky.social](https://bsky.app/profile/beep8-official.bsky.social)
-
+- **Email:** [beep8.official@gmail.com](mailto:beep8.official@gmail.com)  
+- **Website:** [https://beep8.org](https://beep8.org)  
+- **Bluesky:** [@beep8-official.bsky.social](https://bsky.app/profile/beep8-official.bsky.social)  
+- **GitHub:** [beep8/beep8-sdk](https://github.com/beep8/beep8-sdk)
 
 *Happy coding with BEEP-8!*
