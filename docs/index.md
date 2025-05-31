@@ -4,6 +4,7 @@ description: BEEP-8 is a C/C++ fantasy console inspired by PICO-8. Learn more ab
 keywords: beep8, beep-8, beep-8 sdk, retro console, pico-8 alternative, fantasy console, c++ game dev
 ---
 
+
 <p align="center">
   <img src="./img/BEEP-8-LOGO.png" alt="BEEP-8 Logo" width="10%" />
 </p>
