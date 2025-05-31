@@ -209,5 +209,6 @@ PICO-8 ユーザーにとって馴染みのある開発体験を提供しつつ�
 
 - **メール:** beep8.official@gmail.com
 - **ウェブサイト:** https://beep8.org
+- **Bluesky:** [@beep8-official.bsky.social](https://bsky.app/profile/beep8-official.bsky.social)
 
 *BEEP-8 でのコーディングをお楽しみください！*

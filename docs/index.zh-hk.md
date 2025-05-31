@@ -208,5 +208,6 @@ BEEP-8 HELPER 是一個可選的工具庫，提供加速應用開發的輔助模
 
 - **電郵：** beep8.official@gmail.com
 - **網站：** https://beep8.org
+- **Bluesky:** [@beep8-official.bsky.social](https://bsky.app/profile/beep8-official.bsky.social)
 
 *祝您愉快地使用 BEEP-8 編程！*
