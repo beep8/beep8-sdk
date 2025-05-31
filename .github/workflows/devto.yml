@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Publish to DEV.to
-        uses: sinedied/publish-devto@v3
+        uses: sinedied/publish-devto@v1  # ← 修正ポイント
         with:
           api_key: ${{ secrets.DEVTO_API_KEY }}
           files: docs/index.md
