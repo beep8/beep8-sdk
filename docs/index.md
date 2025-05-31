@@ -5,6 +5,7 @@ keywords: beep8, beep-8, beep-8 sdk, retro console, pico-8 alternative, fantasy 
 ---
 
 
+
 <p align="center">
   <img src="./img/BEEP-8-LOGO.png" alt="BEEP-8 Logo" width="10%" />
 </p>
