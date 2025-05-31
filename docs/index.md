@@ -12,11 +12,11 @@ canonical_url: https://beep8.github.io/beep8-sdk/
 ---
 
 <p align="center">
-  <img src="https://beep8.github.io/beep8-sdk/img/BEEP-8-LOGO.png" alt="BEEP-8 Logo" width="10%" />
+  <img src="./img/BEEP-8-LOGO.png" alt="BEEP-8 Logo" width="10%" />
 </p>
 
 <p align="center">
-  <img src="https://beep8.github.io/beep8-sdk/img/intro.gif" alt="Intro Demo" width="80%" />
+  <img src="./img/intro.gif" alt="Intro Demo" width="30%" />
 </p>
 
 # BEEP-8 SDK
