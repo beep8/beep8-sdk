@@ -1,0 +1,19 @@
+name: Publish docs/index.md to DEV.to
+
+on:
+  push:
+    paths:
+      - 'docs/index.md'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Publish to DEV.to
+        uses: sinedied/publish-devto@v3
+        with:
+          api_key: ${{ secrets.DEVTO_API_KEY }}
+          files: docs/index.md
