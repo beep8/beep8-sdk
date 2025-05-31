@@ -1,0 +1,8 @@
+{
+  "name": "beep8-sdk",
+  "version": "1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beep8/beep8-sdk.git"
+  }
+}
