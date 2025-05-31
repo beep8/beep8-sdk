@@ -17,3 +17,4 @@ jobs:
         with:
           devto_key: ${{ secrets.DEVTO_API_KEY }}
           files: docs/index.md
+
