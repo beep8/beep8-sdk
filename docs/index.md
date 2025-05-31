@@ -8,7 +8,7 @@ description: Official SDK for BEEP-8, a web-based fantasy console for C++ develo
 </p>
 
 <p align="center">
-  <img src="https://beep8.github.io/beep8-sdk/img/intro.gif" alt="Intro Demo" width="30%" />
+  <img src="https://beep8.github.io/beep8-sdk/img/intro.gif" alt="Intro Demo" width="70%" />
 </p>
 
 # BEEP-8 SDK
@@ -28,7 +28,7 @@ It also allows developers to create **8-bit-style touch-enabled games**, offerin
 
 ## BEEP-8 System Block Diagram
 
-![BEEP-8 Block Diagram](./img/BEEP-8_BLOCK.png)
+![BEEP-8 Block Diagram](https://beep8.github.io/beep8-sdk/img/BEEP-8_BLOCK.png)
 
 - **Emulated CPU:** ARM v4 running at a fixed 4 MHz.  
   - Based on an architecture originating in the mid-1990s.  
@@ -187,7 +187,7 @@ Each sample can be built, ROM-generated, and launched with a single script. No `
    - Open the application in your default web browser  
 
 <p align="center">
-  <img src="./img/run.png" alt="run" width="100%" />
+  <img src="https://beep8.github.io/beep8-sdk/img/run.png" alt="run" width="100%" />
 </p>
 
 - **Left pane:** the running game  
@@ -198,6 +198,9 @@ Each sample can be built, ROM-generated, and launched with a single script. No `
   ```
 - Each run gets a unique URL—you can paste it into any device’s browser to play remotely.  
 
+<p align="center">
+  <img src="https://beep8.github.io/beep8-sdk/img/run_iphone.png" alt="run on iPhone" width="30%" />
+</p>
 
 #### Windows (Command Prompt)
 

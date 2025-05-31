@@ -7,7 +7,7 @@
 - `./romfs/instcard.jpg` 檔案會作為門戶首頁顯示的縮略圖。  
   - 預設的 `instcard.jpg` 只是佔位圖。請替換成適合你應用的圖片。  
 <p align="center">
-  <img src="./img/instcard.png" alt="縮略圖" width="25%" border="1" />
+  <img src="https://beep8.github.io/beep8-sdk/img/instcard.png" alt="Thumbnail" width="25%" border="1" />
 </p>
 
 - 支援的縮略圖格式：`.jpg`、`.png`、`.gif`、`.mp4`  
@@ -28,13 +28,13 @@
 1. 前往 [https://beep8.org:3000/](https://beep8.org:3000/)  
 2. 點擊右上角的 **Sign up**（如圖所示）：  
 <p align="center">
-  <img src="./img/devnet_sign_up.png" alt="註冊" width="90%" border="1" />
+  <img src="https://beep8.github.io/beep8-sdk/img/devnet_sign_up.png" alt="Sign up" width="90%" border="1" />
 </p>
 
 3. 填寫資料並提交完成註冊。  
 4. 登入後，進入你的儀表板以上傳並管理 `.b8` 發佈檔。  
 <p align="center">
-  <img src="./img/devnet_submit.png" alt="提交 ROM" width="90%" border="1" />
+  <img src="https://beep8.github.io/beep8-sdk/img/devnet_submit.png" alt="Submit ROM" width="90%" border="1" />
 </p>
 
 5. 點擊 **Choose File**，選擇你的 `./obj/<app_name>.b8`。  
@@ -42,12 +42,12 @@
 
 7. 上傳成功後，你會看到如下確認視窗：  
 <p align="center">
-  <img src="./img/devnet_success.png" alt="上傳成功" width="50%" border="1" />
+  <img src="https://beep8.github.io/beep8-sdk/img/devnet_success.png" alt="Upload Successful" width="50%" border="1" />
 </p>
 
 8. 你的提交會以當前狀態（如 In Review、Developer Rejected、Released）列表顯示，你可以在儀表板上直接刪除或重新提交。  
 <p align="center">
-  <img src="./img/devnet_in_review.png" alt="審核中" width="90%" border="1" />
+  <img src="https://beep8.github.io/beep8-sdk/img/devnet_in_review.png" alt="In Review" width="90%" border="1" />
 </p>
 
 9. BEEP-8 團隊會審核你的應用；通過後就會在 beep8.org 上正式發佈。

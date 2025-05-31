@@ -7,7 +7,7 @@ Once you have built your BEEP-8 application, you can publish it on the BEEP-8 po
 - The file `./romfs/instcard.jpg` is used as the thumbnail displayed on the portal’s homepage.
   - The default `instcard.jpg` is a placeholder. Please replace it with an image appropriate for your app.
 <p align="center">
-  <img src="./img/instcard.png" alt="Thumbnail" width="25%" border="1" />
+  <img src="https://beep8.github.io/beep8-sdk/img/instcard.png" alt="Thumbnail" width="25%" border="1" />
 </p>
 
 
@@ -30,14 +30,14 @@ To release your BEEP-8 app, you need to create a free DevNet account:
 2. Click **Sign up** in the top-right corner (as shown below):  
 
 <p align="center">
-  <img src="./img/devnet_sign_up.png" alt="Sign up" width="90%" border="1" />
+  <img src="https://beep8.github.io/beep8-sdk/img/devnet_sign_up.png" alt="Sign up" width="90%" border="1" />
 </p>
 
 3. Enter your details and submit to register.  
 4. After logging in, go to your dashboard to upload and manage your `.b8` releases.  
 
 <p align="center">
-  <img src="./img/devnet_submit.png" alt="Submit ROM" width="90%" border="1" />
+  <img src="https://beep8.github.io/beep8-sdk/img/devnet_submit.png" alt="Submit ROM" width="90%" border="1" />
 </p>
 
 5. Click **Choose File** and select your `./obj/<app_name>.b8`.  
@@ -45,12 +45,12 @@ To release your BEEP-8 app, you need to create a free DevNet account:
 
 7. Upon successful upload, you will see a confirmation dialog (as shown below).  
 <p align="center">
-  <img src="./img/devnet_success.png" alt="Upload Successful" width="50%" border="1" />
+  <img src="https://beep8.github.io/beep8-sdk/img/devnet_success.png" alt="Upload Successful" width="50%" border="1" />
 </p>
 
 8. Your submission will appear in the list with its current status (e.g., In Review, Developer Rejected, Released). You can remove or resubmit directly from the dashboard.
 <p align="center">
-  <img src="./img/devnet_in_review.png" alt="In Review" width="90%" border="1" />
+  <img src="https://beep8.github.io/beep8-sdk/img/devnet_in_review.png" alt="In Review" width="90%" border="1" />
 </p>
 
 9. The BEEP-8 team will review your app; once approved, it will be published on beep8.org.  
