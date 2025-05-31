@@ -8,7 +8,10 @@ description: Official SDK for BEEP-8, a web-based fantasy console for C++ develo
 </p>
 
 <p align="center">
-  <img src="https://beep8.github.io/beep8-sdk/img/intro.mp4" alt="Intro Demo" width="100%" />
+  <video width="100%" controls autoplay muted loop>
+    <source src="https://beep8.github.io/beep8-sdk/img/intro.mp4" type="video/mp4">
+    Your browser does not support the video tag.
+  </video>
 </p>
 
 # BEEP-8 SDK
