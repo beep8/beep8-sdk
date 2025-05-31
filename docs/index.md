@@ -8,7 +8,7 @@ description: Official SDK for BEEP-8, a web-based fantasy console for C++ develo
 </p>
 
 <p align="center">
-  <img src="https://beep8.github.io/beep8-sdk/img/intro.gif" alt="Intro Demo" width="70%" />
+  <img src="https://beep8.github.io/beep8-sdk/img/intro.mp4" alt="Intro Demo" width="100%" />
 </p>
 
 # BEEP-8 SDK
