@@ -3,7 +3,6 @@ title: "BEEP-8 SDK - Fantasy Console for C++ Developers"
 published: false
 description: "BEEP-8 is a C/C++ fantasy console inspired by PICO-8. Learn more about the BEEP-8 SDK, emulator specs, and game development tools."
 tags:
-  - cplusplus
   - beep8
   - fantasyconsole
   - sdk
