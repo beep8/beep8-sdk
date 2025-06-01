@@ -283,8 +283,7 @@ You can build full games using this library with minimal knowledge of the underl
 - Share your game with players around the world on [beep8.org](https://beep8.org)!  
 - To release your BEEP-8 app, see the instructions below:
 
-[RELEASE.md](RELEASE.md)
-
+[RELEASE.md](https://github.com/beep8/beep8-sdk/blob/main/RELEASE.md)
 
 ## License
 
