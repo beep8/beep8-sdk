@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="docs/img/BEEP-8-LOGO.png" alt="BEEP-8 Logo" width="50%" />
+  <img src="docs/img/BEEP-8-LOGO.png" alt="BEEP-8 Logo" width="10%" />
 </p>
 
 <p align="center">
-  <img src="docs/img/intro.gif" alt="Intro Demo" width="25%" />
+  <img src="docs/img/intro.gif" alt="Intro Demo" width="75%" />
 </p>
 
 # BEEP-8 SDK
