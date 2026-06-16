@@ -8,7 +8,8 @@ import os
 # input_video = "./indata/ropasci.mov"
 #input_video = "./indata/coke.mov"
 #input_video = "./indata/apesky.mov"
-input_video = "./indata/penpen_title3.mov"
+#input_video = "./indata/penpen_title3.mov"
+input_video = "./indata/apesky_trim.mov"
 
 output_dir = "./outdata/"
 
