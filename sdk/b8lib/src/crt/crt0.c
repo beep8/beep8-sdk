@@ -755,19 +755,31 @@ int _fstat(int file, struct stat* st) {
   if( (STDOUT == file) || (STDERR == file) ){
     st->st_mode = S_IFCHR;
     return  0;
-  } else {
-    set_errno(EBADF);
-    return  -1;
   }
+  // A valid open driver fd is a character/stream device. Report it as such so
+  // stdio's buffer setup doesn't fail (and log EBADF) on every fopen.
+  FsDriver* fs = fs_get_driver( file );
+  File* pfile = file_get( file );
+  if( fs && pfile && pfile->used ){
+    st->st_mode = S_IFCHR;
+    return  0;
+  }
+  set_errno(EBADF);
+  return  -1;
 }
 
 int _isatty(int file) {
   if( (file == STDOUT ) || (file == STDERR) ) {
     return  1;
-  } else {
-    set_errno(EBADF);
-    return  -1;
   }
+  // Valid driver fd: not a tty, but not an error either (avoids EBADF noise).
+  FsDriver* fs = fs_get_driver( file );
+  File* pfile = file_get( file );
+  if( fs && pfile && pfile->used ){
+    return  0;
+  }
+  set_errno(EBADF);
+  return  -1;
 }
 
 int _link(char *old,char *new_) {
