@@ -91,13 +91,20 @@ static  int     save_close( File* filep ){
   return 0;
 }
 
+// Streaming device: pretend seek succeeds so stdio's r+ read/write transition
+// (which calls lseek) doesn't log EBADF. The offset is ignored.
+static  off_t   save_seek( File* filep, int ptr, int dir ){
+  (void)filep; (void)ptr; (void)dir;
+  return 0;
+}
+
 static const file_operations save_fops =
 {
   save_open,  /* open  */
   save_close, /* close */
   save_read,  /* read  */
   save_write, /* write */
-  NULL,       /* seek  */
+  save_seek,  /* seek  */
   NULL        /* ioctl */
 };
 

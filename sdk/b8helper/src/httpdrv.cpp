@@ -88,13 +88,20 @@ static  int     http_close( File* filep ){
   return 0;
 }
 
+// Streaming device: pretend seek succeeds so stdio's r+ read/write transition
+// (which calls lseek) doesn't log EBADF. The offset is ignored.
+static  off_t   http_seek( File* filep, int ptr, int dir ){
+  (void)filep; (void)ptr; (void)dir;
+  return 0;
+}
+
 static const file_operations http_fops =
 {
   http_open,  /* open  */
   http_close, /* close */
   http_read,  /* read  */
   http_write, /* write */
-  NULL,       /* seek  */
+  http_seek,  /* seek  */
   NULL        /* ioctl */
 };
 
