@@ -71,7 +71,18 @@ int main(int argc,char* argv[]){
     resp[ rlen ] = 0;
 
     if( done && !shown ){
-      fprintf( fp, "RESP: %s\n", rlen > 0 ? resp : "(empty/error)" );
+      // Full text goes to the browser DevTools console (no width limit).
+      printf( "RESP[%d]: %s\n", rlen, rlen > 0 ? resp : "(empty/error)" );
+
+      // On-screen: wrap at 16 columns so it fits 128px / 8px font.
+      char wrapped[320];
+      int  w = 0;
+      for( int i = 0 ; i < rlen && w < (int)sizeof(wrapped) - 2 ; ++i ){
+        wrapped[ w++ ] = resp[i];
+        if( ((i + 1) % 16) == 0 ) wrapped[ w++ ] = '\n';
+      }
+      wrapped[ w ] = 0;
+      fprintf( fp, "RESP:\n%s\n", rlen > 0 ? wrapped : "(empty/error)" );
       shown = true;
     }
 
