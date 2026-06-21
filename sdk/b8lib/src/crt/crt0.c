@@ -754,6 +754,7 @@ _ssize_t _write_r(struct _reent *r, int fd, const void *buf, size_t nbytes) {
 int _fstat(int file, struct stat* st) {
   if( (STDOUT == file) || (STDERR == file) ){
     st->st_mode = S_IFCHR;
+    st->st_blksize = 0;            // <=0 -> stdio uses BUFSIZ (avoid garbage size)
     return  0;
   }
   // A valid open driver fd is a character/stream device. Report it as such so
@@ -762,6 +763,7 @@ int _fstat(int file, struct stat* st) {
   File* pfile = file_get( file );
   if( fs && pfile && pfile->used ){
     st->st_mode = S_IFCHR;
+    st->st_blksize = 0;            // <=0 -> stdio uses BUFSIZ (avoid garbage size)
     return  0;
   }
   set_errno(EBADF);
