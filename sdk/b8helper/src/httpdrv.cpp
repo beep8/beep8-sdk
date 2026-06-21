@@ -18,6 +18,7 @@ using namespace std;
 #define HTTP_RES_EOF  (0xff)
 #define SIG_DRV       (0x48545450) // 'HTTP'
 #define POLL_USEC     (1000)       // yield granularity while waiting for the host
+#define TIMEOUT_SPINS (8000)       // give up if no byte arrives (host absent/down)
 
 struct DriverWork {
   u32   _sig  = SIG_DRV;
@@ -56,7 +57,8 @@ static  ssize_t http_read( File* filep, char* buffer, size_t buflen ){
   if( !pw->_sent ) http_send( pw );   // lazy: the URL is sent on the first read
   if( pw->_eof ) return 0;
 
-  size_t got = 0;
+  size_t got   = 0;
+  int    spins = 0;
   while( got < buflen ){
     while( got < buflen && B8_FIFO_SCI_RX_LEN( SCI_CH_HTTP ) > 0 ){
       u8 b = B8_FIFO_SCI_RX( SCI_CH_HTTP );
@@ -64,6 +66,7 @@ static  ssize_t http_read( File* filep, char* buffer, size_t buflen ){
       buffer[ got++ ] = (char)b;
     }
     if( got > 0 ) break;              // return what we have; stdio calls us again
+    if( ++spins > TIMEOUT_SPINS ){ pw->_eof = true; break; }  // host absent/down
     usleep( POLL_USEC );              // yield: let the frame complete + host fetch
   }
   return (ssize_t)got;
