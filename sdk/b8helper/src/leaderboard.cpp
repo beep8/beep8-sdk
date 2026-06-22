@@ -5,8 +5,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-// dbg score server. Production is :8083.
-#define LB_BASE "https://beep8.org:9083"
+// Production score server. The dbg server is :9083.
+#define LB_BASE "https://beep8.org:8083"
 
 static int http_get( const char* url, char* buf, int buflen ){
   http::Reset();                       // idempotent: register /http on first use
