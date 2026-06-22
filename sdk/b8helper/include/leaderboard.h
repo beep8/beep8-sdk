@@ -27,4 +27,16 @@ namespace leaderboard {
   // a transport/parse error. Blocking.
   int board( const char* game, int window, Entry* out, int max );
 
+  // Begin a run: fetch a single-use submit token (and optionally the daily
+  // seed). Blocking. Returns true on success and writes a NUL-terminated token
+  // to tokenOut (needs ~160 bytes); seedOut may be null.
+  bool start( const char* game, char* tokenOut, int tokenCap, unsigned* seedOut );
+
+  // Submit a score with a token from start(). Blocking. Returns the new board
+  // entry count (>=0) and fills out[0..max) with the updated Top board, or -1
+  // on a transport/parse error. The 1-based rank is written to *rankOut (>0 if
+  // placed) when rankOut is non-null.
+  int submit( const char* game, const char* name, int score, const char* token,
+              Entry* out, int max, int* rankOut );
+
 }

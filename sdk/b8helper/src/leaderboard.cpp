@@ -56,3 +56,49 @@ int leaderboard::board( const char* game, int window, Entry* out, int max ){
   if( !strstr( buf, "\"ok\":true" ) ) return -1;
   return parse_board( buf, out, max );
 }
+
+bool leaderboard::start( const char* game, char* tokenOut, int tokenCap,
+                         unsigned* seedOut ){
+  char url[160];
+  snprintf( url, sizeof(url), "%s/start?game=%s", LB_BASE, game );
+
+  static char buf[1024];
+  int n = http_get( url, buf, sizeof(buf) );
+  if( n <= 0 ) return false;
+  if( !strstr( buf, "\"ok\":true" ) ) return false;
+
+  if( seedOut ){
+    const char* s = strstr( buf, "\"seed\":" );
+    *seedOut = s ? (unsigned)strtoul( s + 7, nullptr, 10 ) : 0;
+  }
+
+  const char* t = strstr( buf, "\"token\":\"" );
+  if( !t ) return false;
+  t += 9;                                // past "token":"
+  int i = 0;
+  while( *t && *t != '"' && i < tokenCap - 1 ) tokenOut[ i++ ] = *t++;
+  tokenOut[ i ] = 0;
+  return i > 0;
+}
+
+int leaderboard::submit( const char* game, const char* name, int score,
+                         const char* token, Entry* out, int max, int* rankOut ){
+  // name (A-Z only) and the base64url token are URL-safe, so no escaping needed.
+  char url[320];
+  snprintf( url, sizeof(url), "%s/submit?game=%s&name=%s&score=%d&token=%s",
+            LB_BASE, game, name, score, token );
+
+  static char buf[2048];
+  int n = http_get( url, buf, sizeof(buf) );
+  if( n <= 0 ) return -1;
+  if( !strstr( buf, "\"ok\":true" ) ){
+    if( rankOut ) *rankOut = -1;
+    return -1;
+  }
+
+  if( rankOut ){
+    const char* r = strstr( buf, "\"rank\":" );
+    *rankOut = r ? atoi( r + 7 ) : -1;
+  }
+  return parse_board( buf, out, max );
+}
