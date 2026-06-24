@@ -104,7 +104,10 @@ public:
     frame++;
 
     // --- touch / drag handling ---
-    bool down = btn(BUTTON_MOUSE_LEFT);
+    // NOTE: btn(BUTTON_MOUSE_LEFT) always returns false in BEEP-8 (btn() only
+    // handles the d-pad/O/X buttons). Held mouse/touch state must be read from
+    // mousestatus(). mousex()/mousey() return fx8 but convert to integer pixels.
+    bool down = (mousestatus() & MouseBtn::LEFT) != 0;
     int mx = mousex();
     int my = mousey();
 
