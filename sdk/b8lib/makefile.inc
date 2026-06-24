@@ -14,7 +14,7 @@ ifeq ($(OS),Windows_NT)
   GCCVER = gcc10.3
 else ifeq ($(shell uname),Linux)
 	OS = linux
-  GCCVER = gcc10.2
+	GCCVER = gcc10.2   # repo bundles gcc10.2 for linux (gcc11.3 is osx-only)
 	EXEC_B8PLAYER = $(TOOL_TOP)/beep8_app_player/Beep8AppPlayer-linux-x64/Beep8AppPlayer --args -b $(B8) $(SPAGE)
 else ifeq ($(shell uname),Darwin)
 	OS = osx
@@ -86,7 +86,7 @@ ESC_COMPILE = "\x1b[1;33m"
 endif
 
 # -O0 or -O1
-OPTIMIZE	:= -O2
+OPTIMIZE	:= -O3
 
 CWARN = -Wall
 CWARN += -Wextra
@@ -178,10 +178,6 @@ CFLAGS += -MP
 CFLAGS += -Wshadow -Wundef
 
 CFLAGS += -fno-strength-reduce
-
-# Disable GCC strict-aliasing optimizations to prevent undefined behavior when type-punning via pointer casts.
-# Removing this flag is dangerous and not recommended.
-CFLAGS += -fno-strict-aliasing
 
 # The -fomit-frame-pointer option is a compiler option used with the GCC (GNU Compiler Collection)
 # to instruct the compiler to omit the frame pointer for function calls. 
