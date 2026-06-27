@@ -14,7 +14,8 @@ ifeq ($(OS),Windows_NT)
   GCCVER = gcc10.3
 else ifeq ($(shell uname),Linux)
 	OS = linux
-	GCCVER = gcc10.2   # repo bundles gcc10.2 for linux (gcc11.3 is osx-only)
+	# repo bundles gcc10.2 for linux (gcc11.3 is osx-only)
+	GCCVER = gcc10.2
 	EXEC_B8PLAYER = $(TOOL_TOP)/beep8_app_player/Beep8AppPlayer-linux-x64/Beep8AppPlayer --args -b $(B8) $(SPAGE)
 else ifeq ($(shell uname),Darwin)
 	OS = osx
