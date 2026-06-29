@@ -32,6 +32,7 @@ OBJS = $(OBJDIR)/sys.o \
 	$(OBJDIR)/pthread.o \
 	$(OBJDIR)/syscall.o \
 	$(OBJDIR)/tmr.o \
+	$(OBJDIR)/apu.o \
 	$(OBJDIR)/hif.o \
 	$(OBJDIR)/sched.o
 
