@@ -2,16 +2,16 @@
  * @file apu.h
  * @brief Audio Processing Unit (APU) for the BEEP-8 system.
  *
- * BEEP-8 originally shipped a classic PSG sound source, but the design was later
- * changed to a **Namco C30 style wavetable sound generator (WSG)**. This header
- * describes that current hardware and provides the low-level driver API.
+ * The BEEP-8 APU is a wavetable sound generator (WSG). This header describes
+ * the hardware and provides the low-level driver API.
  *
  * The APU is a memory-mapped peripheral at @ref B8_APU_ADDR. It mixes:
  *  - @ref B8_APU_NUM_WSG_CH wavetable channels, each playing one of
- *    @ref B8_APU_NUM_WAVTYP waveforms (each waveform is
+ *    @ref B8_APU_NUM_WAVTYP waveforms (each waveform is made of
  *    @ref B8_APU_SAMPLES_PER_WAV 4-bit samples), and
- *  - @ref B8_APU_NUM_NOISE_CH pseudo-random noise channels,
- * then applies a global reverb (delay + gain) and outputs mono PCM at
+ *  - @ref B8_APU_NUM_NOISE_CH pseudo-random noise channels.
+ *
+ * It then applies a global reverb (delay + gain) and outputs mono PCM at
  * @ref B8_APU_OUT_FREQ Hz.
  *
  * There are two ways to drive it:
@@ -19,9 +19,6 @@
  *  2. Use the convenience driver functions (@c b8Apu*), which wrap the common
  *     operations: reset, loading the waveform table, per-channel tone/noise,
  *     reverb, pitch conversion, and waiting on the per-step sync IRQ.
- *
- * The JavaScript emulator counterpart is @c web/.../js.b8/Apu.js; its register
- * map is identical to the one defined here.
  *
  * Pitch model: each WSG channel owns a 32-bit phase accumulator that advances by
  * its @c FREQ value once per output sample. The waveform index is bits 16..20 of
