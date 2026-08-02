@@ -5,16 +5,21 @@
 //               panned over the full canvas; this is where you draw.
 //   - OVERVIEW: the whole 128x128 canvas at 1:1, view-only. A tap or drag moves
 //               the viewport box (snapped to 16px tiles). Return with View btn.
-// Toolbar (two rows): row A = Pen / Hand / Eyedropper / Undo / Redo;
-//                     row B = View / Grid / Cut / Copy / Paste.
+// Toolbar (three rows): row A = Pen / Hand / Eyedropper / Undo / Redo;
+//   row B = Copy / Paste / Cut / View / Grid / Help;
+//   row C = Flip-H / Flip-V / Mirror.
 // Undo/Redo keep up to UNDO_MAX steps. Cut/Copy/Paste act on the current 16x16
-// viewport tile. Input is touch/mouse (b8HifGetMouseStatus).
+// viewport tile in OVERVIEW mode; the two flips mirror it in either mode (the
+// visible slice in PIXEL, the white box in OVERVIEW). Mirror is a persistent
+// symmetry-draw mode (tap to cycle off -> left/right -> up/down): while on, the
+// Pen also paints each pixel's reflection across the centre of the 16x16 window.
+// Input is touch/mouse.
 //
 // NOTE: pico8 rectfill()/rect() take x1/y1 as EXCLUSIVE (right/bottom edge not
 // drawn), so fills use +size and a 1px-wide line is (a, a+1).
 //
-// Not yet wired (later increments): Mirror L/R + U/D, PNG save/load (ROM-side
-// C codec), and Save-with-optional-share to the CC0 asset commons.
+// Not yet wired (later increments): PNG save/load (ROM-side C codec), and
+// Save-with-optional-share to the CC0 asset commons.
 #include <pico8.h>
 #include <beep8.h>
 #include <string.h>
@@ -39,17 +44,19 @@ static constexpr int BARA_Y   = PAL_Y + PAL_H + 2;  // toolbar row A (below pale
 static constexpr int BARB_Y   = BARA_Y + 20;  // toolbar row B
 static constexpr int ICON    = 16;            // icon / button size
 static constexpr int PITCH   = 21;            // toolbar button pitch
-static constexpr int STAT_Y  = BARB_Y + 20;
+static constexpr int BARC_Y  = BARB_Y + 20;  // toolbar row C (below row B)
 
 static constexpr int UNDO_MAX = 4;            // undo / redo depth
 static constexpr int FX_FRAMES = 8;           // copy/paste "pressed" nudge duration
 static constexpr int SZ = CANVAS * CANVAS;    // bytes per canvas snapshot
 
-// toolbar button ids. Screen positions come from btnPos(); the two rows are:
+// toolbar button ids. Screen positions come from btnPos(); the three rows are:
 //   A: [Pen Hand Eye]     (left)  ...  [Undo Redo]     (right, edge-aligned)
 //   B: [Copy Paste Cut]   (left)  ...  [View Grid Help] (right, edge-aligned)
+//   C: [FlipH FlipV Mirror] (left)
 enum Btn { B_PEN = 0, B_HAND, B_EYE, B_UNDO, B_REDO,
-           B_VIEW, B_GRID, B_CUT, B_COPY, B_PASTE, B_HELP, B_N };
+           B_VIEW, B_GRID, B_CUT, B_COPY, B_PASTE, B_HELP,
+           B_FLIPH, B_FLIPV, B_MIRROR, B_N };
 
 static inline int clampi(int v, int lo, int hi){
   return v < lo ? lo : (v > hi ? hi : v);
@@ -72,6 +79,9 @@ static void btnPos(int id, int& x, int& y){
     case B_VIEW:  x = SCRW - ICON - 2*PITCH; y = BARB_Y; break;
     case B_GRID:  x = SCRW - ICON - PITCH;   y = BARB_Y; break;
     case B_HELP:  x = SCRW - ICON;           y = BARB_Y; break;
+    case B_FLIPH: x = 0 * PITCH;             y = BARC_Y; break;
+    case B_FLIPV: x = 1 * PITCH;             y = BARC_Y; break;
+    case B_MIRROR:x = 2 * PITCH;             y = BARC_Y; break;
     default:      x = 0;                     y = 0;      break;
   }
 }
@@ -133,7 +143,31 @@ static const uint16_t kIcon[B_N][16] = {
     0b0000000000110000,0b0000000001110000,0b0000000011100000,0b0000000111000000,
     0b0000000110000000,0b0000000110000000,0b0000000110000000,0b0000000000000000,
     0b0000000110000000,0b0000000110000000,0b0000000000000000,0b0000000000000000 },
+  { // B_FLIPH : mirror L/R - two triangles pointing outward across a dashed vert axis
+    0b0000000110000000,0b0000000000000000,0b0000000110000000,0b0000010000100000,
+    0b0000110110110000,0b0001110000111000,0b0011110110111100,0b0111110000111110,
+    0b0111110110111110,0b0011110000111100,0b0001110110111000,0b0000110000110000,
+    0b0000010110100000,0b0000000000000000,0b0000000110000000,0b0000000000000000 },
+  { // B_FLIPV : mirror U/D - two triangles pointing outward across a dashed horiz axis
+    0b0000000000000000,0b0000000110000000,0b0000001111000000,0b0000011111100000,
+    0b0000111111110000,0b0001111111111000,0b0000000000000000,0b1010101010101010,
+    0b1010101010101010,0b0000000000000000,0b0001111111111000,0b0000111111110000,
+    0b0000011111100000,0b0000001111000000,0b0000000110000000,0b0000000000000000 },
+  { // B_MIRROR : mirror-mode toggle (L/R symmetry) - hollow trapezoids facing a
+    // dashed vertical axis. The U/D state swaps in kIconMirrorV (this rotated 90).
+    0b0000000000000000,0b0000000110000000,0b0100000110000010,0b0110000000000110,
+    0b0101100000110010,0b0100010110100010,0b0100010110100010,0b0100010000100010,
+    0b0100010000100010,0b0100010110100010,0b0100010110100010,0b0101100000110010,
+    0b0110000000000110,0b0100000110000010,0b0000000110000000,0b0000000000000000 },
 };
+
+// U/D mirror icon: the B_MIRROR bitmap rotated 90 degrees (trapezoids facing a
+// dashed horizontal axis). Shown on the Mirror button while in up/down mode.
+static const uint16_t kIconMirrorV[16] = {
+  0b0000000000000000,0b0011111111111100,0b0001000000001000,0b0000100000010000,
+  0b0000100000010000,0b0000011111100000,0b0000000000000000,0b0110011001100110,
+  0b0110011001100110,0b0000000000000000,0b0000011111100000,0b0000100000010000,
+  0b0000100000010000,0b0001000000001000,0b0011111111111100,0b0000000000000000 };
 
 class PixArt : public Pico8 {
   uint8_t canvas[CANVAS][CANVAS];             // color index 0..15 per pixel
@@ -147,6 +181,7 @@ class PixArt : public Pico8 {
   int  tool = B_PEN;
   bool overview = false;           // false: PIXEL mode, true: OVERVIEW mode
   bool grid = false;               // grid overlay on/off
+  int  mirror = 0;                 // symmetry-draw mode: 0 off, 1 left-right, 2 up-down
   bool help = false;               // HELP overlay: shortcuts only, editing disabled
   bool prevDrag = false;
   int  grabCX = 0, grabCY = 0;     // Hand-tool grab anchor (canvas coords)
@@ -191,10 +226,40 @@ class PixArt : public Pico8 {
     for (int y = 0; y < VIEW; ++y)
       for (int x = 0; x < VIEW; ++x) canvas[vy + y][vx + x] = 0;
   }
+  void doFlipH(){                  // mirror the 16x16 tile left<->right (reverse cols)
+    beginStroke();
+    for (int y = 0; y < VIEW; ++y)
+      for (int x = 0; x < VIEW / 2; ++x){
+        uint8_t* a = &canvas[vy + y][vx + x];
+        uint8_t* b = &canvas[vy + y][vx + VIEW - 1 - x];
+        const uint8_t t = *a; *a = *b; *b = t;
+      }
+  }
+  void doFlipV(){                  // mirror the 16x16 tile top<->bottom (reverse rows)
+    for (int y = 0; y < VIEW / 2; ++y)
+      for (int x = 0; x < VIEW; ++x){
+        uint8_t* a = &canvas[vy + y][vx + x];
+        uint8_t* b = &canvas[vy + VIEW - 1 - y][vx + x];
+        const uint8_t t = *a; *a = *b; *b = t;
+      }
+  }
+  // paint one logical pixel plus its mirror-mode reflection. The symmetry axis is
+  // the centre of the visible 16x16 window, so the partner pixel sits at local
+  // 15-x (left-right) or 15-y (up-down): canvas vx+15-(cx-vx) / vy+15-(cy-vy).
+  // Both stay inside 0..CANVAS-1 because vx,vy <= VMAX and cx-vx,cy-vy are 0..15.
+  void paint(int cx, int cy){
+    canvas[cy][cx] = (uint8_t)sel;
+    if      (mirror == 1) canvas[cy][vx + 15 - (cx - vx)] = (uint8_t)sel;
+    else if (mirror == 2) canvas[vy + 15 - (cy - vy)][cx] = (uint8_t)sel;
+  }
   // cut/copy/paste are overview-only; on a successful action flash the button (nudge +1,+1)
   void fireCut(){   if (!overview) return;             doCut();   fxId = B_CUT;   fxTtl = FX_FRAMES; }
   void fireCopy(){  if (!overview) return;             doCopy();  fxId = B_COPY;  fxTtl = FX_FRAMES; }
   void firePaste(){ if (!overview || !hasClip) return; doPaste(); fxId = B_PASTE; fxTtl = FX_FRAMES; }
+  // flips work in both modes: they mirror the current 16x16 tile (the visible slice
+  // in PIXEL mode, the white viewport box in OVERVIEW) -- always available.
+  void fireFlipH(){ doFlipH(); fxId = B_FLIPH; fxTtl = FX_FRAMES; }
+  void fireFlipV(){ doFlipV(); fxId = B_FLIPV; fxTtl = FX_FRAMES; }
 
   // Aseprite-compatible keyboard shortcuts (keys come from the HIF keyboard
   // FIFO: low 16 bits = ASCII, high 16 bits = modifier status).
@@ -218,6 +283,7 @@ class PixArt : public Pico8 {
           case 'i': tool = B_EYE;  break;                     // eyedropper
           case 'h': tool = B_HAND; break;                     // hand / pan
           case 'g': grid = !grid;  break;                     // toggle grid
+          case 'm': mirror = (mirror + 1) % 3; break;         // cycle mirror mode
         }
       }
     }
@@ -234,6 +300,9 @@ class PixArt : public Pico8 {
       case B_COPY:  fireCopy();  break;
       case B_PASTE: firePaste(); break;
       case B_HELP:  help = !help; break;              // toggle the HELP overlay
+      case B_FLIPH: fireFlipH(); break;               // flips = both modes
+      case B_FLIPV: fireFlipV(); break;
+      case B_MIRROR: mirror = (mirror + 1) % 3; break; // cycle off -> L/R -> U/D
     }
   }
 
@@ -241,6 +310,7 @@ class PixArt : public Pico8 {
     memset(canvas, 0, sizeof(canvas));
     uCount = rCount = 0;
     hasClip = false;
+    mirror = 0;
     vx = vy = 0;                   // start on the top-left tile (0,0)-(15,15)
   }
 
@@ -272,7 +342,7 @@ class PixArt : public Pico8 {
           switch (tool) {
             case B_PEN:
               if (press) beginStroke();
-              canvas[cy][cx] = (uint8_t)sel;
+              paint(cx, cy);                          // + mirror reflection when on
               break;
             case B_EYE:
               if (press) sel = canvas[cy][cx];
@@ -301,18 +371,18 @@ class PixArt : public Pico8 {
     prevDrag = drag;
   }
 
-  void drawIcon(int x, int y, int id, Color fg){
+  void drawIcon(int x, int y, const uint16_t* bits, Color fg){
     for (int r = 0; r < 16; ++r){
-      const uint16_t bits = kIcon[id][r];
+      const uint16_t row = bits[r];
       for (int c = 0; c < 16; ++c)
-        if ((bits >> (15 - c)) & 1) pset(x + c, y + r, fg);
+        if ((row >> (15 - c)) & 1) pset(x + c, y + r, fg);
     }
   }
 
-  void drawButton(int id, int bx, int by, Color fg, bool pressed = false){
+  void drawButton(int bx, int by, Color fg, bool pressed, const uint16_t* bits){
     rectfill(bx, by, bx + ICON, by + ICON, WHITE);      // button bg (white panel)
     const int d = pressed ? 1 : 0;                       // press feedback: nudge (+1,+1)
-    drawIcon(bx + d, by + d, id, fg);
+    drawIcon(bx + d, by + d, bits, fg);
   }
 
   // full-screen keyboard-shortcut list; nothing of the editor is drawn behind it
@@ -323,7 +393,8 @@ class PixArt : public Pico8 {
     sprint(4, y, LIGHT_GREY, "B  PEN");       y += 11;
     sprint(4, y, LIGHT_GREY, "H  HAND");      y += 11;
     sprint(4, y, LIGHT_GREY, "I  EYEDROPPER"); y += 11;
-    sprint(4, y, LIGHT_GREY, "G  GRID");      y += 15;
+    sprint(4, y, LIGHT_GREY, "G  GRID");      y += 11;
+    sprint(4, y, LIGHT_GREY, "M  MIRROR");    y += 15;
     sprint(4, y, LIGHT_GREY, "CTRL+Z  UNDO"); y += 11;
     sprint(4, y, LIGHT_GREY, "CTRL+Y  REDO"); y += 15;
     sprint(4, y, WHITE, "OVERVIEW ONLY:");    y += 11;
@@ -406,10 +477,14 @@ class PixArt : public Pico8 {
         case B_COPY:  if (!overview)                 fg = LIGHT_GREY; break;  // overview only
         case B_PASTE: if (!overview || !hasClip)     fg = LIGHT_GREY; break;
         case B_HELP:  break;                          // always available
+        case B_FLIPH: case B_FLIPV: break;            // available in both modes
+        case B_MIRROR: if (mirror == 0) fg = LIGHT_GREY; break;  // off = grey, on = black
       }
       int bx, by; btnPos(id, bx, by);
       const bool pressed = (fxTtl > 0 && fxId == id);   // cut/copy/paste tap flash
-      drawButton(id, bx, by, fg, pressed);
+      // Mirror shows the L/R glyph for off & left-right, the rotated one for up-down.
+      const uint16_t* bits = (id == B_MIRROR && mirror == 2) ? kIconMirrorV : kIcon[id];
+      drawButton(bx, by, fg, pressed, bits);
     }
     // light-grey box grouping the three mutually-exclusive tools (drawn over the
     // button panels so its left edge stays visible at column 0). Top edge nudged
