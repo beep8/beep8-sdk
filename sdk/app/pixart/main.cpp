@@ -5,7 +5,7 @@
 //               panned over the full canvas; this is where you draw.
 //   - OVERVIEW: the whole 128x128 canvas at 1:1, view-only. A tap or drag moves
 //               the viewport box (snapped to 16px tiles). Return with View btn.
-// Toolbar (three rows): row A = Pen / Hand / Eyedropper / Undo / Redo;
+// Toolbar (three rows): row A = Pen / Hand / Eyedropper / Fill / Undo / Redo;
 //   row B = Copy / Paste / Cut / View / Grid / Help;
 //   row C = Flip-H / Flip-V / Mirror.
 // Undo/Redo keep up to UNDO_MAX steps. Cut/Copy/Paste act on the current 16x16
@@ -51,12 +51,12 @@ static constexpr int FX_FRAMES = 8;           // copy/paste "pressed" nudge dura
 static constexpr int SZ = CANVAS * CANVAS;    // bytes per canvas snapshot
 
 // toolbar button ids. Screen positions come from btnPos(); the three rows are:
-//   A: [Pen Hand Eye]     (left)  ...  [Undo Redo]     (right, edge-aligned)
+//   A: [Pen Hand Eye Fill] (left) ...  [Undo Redo]     (right, edge-aligned)
 //   B: [Copy Paste Cut]   (left)  ...  [View Grid Help] (right, edge-aligned)
 //   C: [FlipH FlipV Mirror] (left)
 enum Btn { B_PEN = 0, B_HAND, B_EYE, B_UNDO, B_REDO,
            B_VIEW, B_GRID, B_CUT, B_COPY, B_PASTE, B_HELP,
-           B_FLIPH, B_FLIPV, B_MIRROR, B_N };
+           B_FLIPH, B_FLIPV, B_MIRROR, B_FILL, B_N };
 
 static inline int clampi(int v, int lo, int hi){
   return v < lo ? lo : (v > hi ? hi : v);
@@ -71,6 +71,7 @@ static void btnPos(int id, int& x, int& y){
     case B_PEN:   x = 0 * PITCH;             y = BARA_Y; break;
     case B_HAND:  x = 1 * PITCH;             y = BARA_Y; break;
     case B_EYE:   x = 2 * PITCH;             y = BARA_Y; break;
+    case B_FILL:  x = 3 * PITCH;             y = BARA_Y; break;
     case B_UNDO:  x = SCRW - ICON - PITCH;   y = BARA_Y; break;
     case B_REDO:  x = SCRW - ICON;           y = BARA_Y; break;
     case B_COPY:  x = 0 * PITCH;             y = BARB_Y; break;
@@ -159,6 +160,12 @@ static const uint16_t kIcon[B_N][16] = {
     0b0101100000110010,0b0100010110100010,0b0100010110100010,0b0100010000100010,
     0b0100010000100010,0b0100010110100010,0b0100010110100010,0b0101100000110010,
     0b0110000000000110,0b0100000110000010,0b0000000110000000,0b0000000000000000 },
+  { // B_FILL : paint bucket - a filled can (handle loop on top) tilted right, with
+    // a paint drip running off the lower-right lip.
+    0b0000001111000000,0b0000001001000000,0b0000001001000000,0b0000001111000000,
+    0b0000011111100000,0b0000111111110000,0b0001111111111000,0b0001111111111000,
+    0b0000111111111100,0b0000011111101110,0b0000001111000110,0b0000000110000100,
+    0b0000000000000000,0b0000000000000000,0b0000000000000000,0b0000000000000000 },
 };
 
 // U/D mirror icon: the B_MIRROR bitmap rotated 90 degrees (trapezoids facing a
@@ -174,6 +181,7 @@ class PixArt : public Pico8 {
   uint8_t uStack[UNDO_MAX][CANVAS][CANVAS];   // undo snapshots (newest at top)
   uint8_t rStack[UNDO_MAX][CANVAS][CANVAS];   // redo snapshots
   uint8_t clip[VIEW][VIEW];                   // 16x16 copy/paste clipboard
+  uint8_t fillStk[VIEW * VIEW][2];            // flood-fill work stack (window-bounded)
   int  uCount = 0, rCount = 0;
   bool hasClip = false;
   int  vx = 0, vy = 0;             // PIXEL viewport top-left (canvas coords)
@@ -252,6 +260,31 @@ class PixArt : public Pico8 {
     if      (mirror == 1) canvas[cy][vx + 15 - (cx - vx)] = (uint8_t)sel;
     else if (mirror == 2) canvas[vy + 15 - (cy - vy)][cx] = (uint8_t)sel;
   }
+  // flood-fill the 4-connected run of colour `from` reachable from (sx,sy),
+  // recolouring it to `sel`. Bounded to the visible 16x16 window [vx,vx+15] x
+  // [vy,vy+15] (Paint Bucket only acts on what is on screen). Cells are
+  // recoloured as they are pushed, so each enters the stack at most once and
+  // fillStk (VIEW*VIEW deep) can never overflow.
+  void floodFill(int sx, int sy, uint8_t from){
+    const uint8_t to = (uint8_t)sel;
+    if (from == to) return;
+    const int x0 = vx, y0 = vy, x1 = vx + VIEW - 1, y1 = vy + VIEW - 1;
+    int sp = 0;
+    canvas[sy][sx] = to;
+    fillStk[sp][0] = (uint8_t)sx; fillStk[sp][1] = (uint8_t)sy; ++sp;
+    while (sp > 0){
+      const int x = fillStk[--sp][0], y = fillStk[sp][1];
+      const int nx[4] = { x + 1, x - 1, x, x };
+      const int ny[4] = { y, y, y + 1, y - 1 };
+      for (int i = 0; i < 4; ++i){
+        const int ax = nx[i], ay = ny[i];
+        if (ax < x0 || ax > x1 || ay < y0 || ay > y1) continue;
+        if (canvas[ay][ax] != from) continue;
+        canvas[ay][ax] = to;
+        fillStk[sp][0] = (uint8_t)ax; fillStk[sp][1] = (uint8_t)ay; ++sp;
+      }
+    }
+  }
   // cut/copy/paste are overview-only; on a successful action flash the button (nudge +1,+1)
   void fireCut(){   if (!overview) return;             doCut();   fxId = B_CUT;   fxTtl = FX_FRAMES; }
   void fireCopy(){  if (!overview) return;             doCopy();  fxId = B_COPY;  fxTtl = FX_FRAMES; }
@@ -291,7 +324,7 @@ class PixArt : public Pico8 {
 
   void dispatch(int btn){
     switch (btn) {
-      case B_PEN: case B_HAND: case B_EYE: tool = btn; break;
+      case B_PEN: case B_HAND: case B_EYE: case B_FILL: tool = btn; break;
       case B_UNDO:  doUndo(); break;
       case B_REDO:  doRedo(); break;
       case B_VIEW:  overview = !overview; break;
@@ -343,6 +376,12 @@ class PixArt : public Pico8 {
             case B_PEN:
               if (press) beginStroke();
               paint(cx, cy);                          // + mirror reflection when on
+              break;
+            case B_FILL:                              // paint bucket: fill on tap only
+              if (press && canvas[cy][cx] != (uint8_t)sel) {
+                beginStroke();
+                floodFill(cx, cy, canvas[cy][cx]);
+              }
               break;
             case B_EYE:
               if (press) sel = canvas[cy][cx];
@@ -467,6 +506,9 @@ class PixArt : public Pico8 {
       Color fg = BLACK;
       switch (id) {
         case B_PEN: case B_HAND: case B_EYE: fg = (id == tool) ? BLACK : LIGHT_GREY; break;
+        // Fill is disabled in OVERVIEW (view-only): always grey there; else it is a
+        // normal tool-trio member (black when selected).
+        case B_FILL:  fg = overview ? LIGHT_GREY : ((id == tool) ? BLACK : LIGHT_GREY); break;
         case B_UNDO:  if (uCount == 0)               fg = LIGHT_GREY; break;
         case B_REDO:  if (rCount == 0)               fg = LIGHT_GREY; break;
         // View (magnifier): black while NOT in overview (tap to zoom out), grey once in it.
@@ -486,10 +528,10 @@ class PixArt : public Pico8 {
       const uint16_t* bits = (id == B_MIRROR && mirror == 2) ? kIconMirrorV : kIcon[id];
       drawButton(bx, by, fg, pressed, bits);
     }
-    // light-grey box grouping the three mutually-exclusive tools (drawn over the
+    // light-grey box grouping the four mutually-exclusive tools (drawn over the
     // button panels so its left edge stays visible at column 0). Top edge nudged
     // up 1px (BARA_Y-2) for a touch more breathing room above the icons.
-    rect(0, BARA_Y - 2, 2 * PITCH + ICON, BARA_Y + ICON, LIGHT_GREY);
+    rect(0, BARA_Y - 2, 3 * PITCH + ICON, BARA_Y + ICON, LIGHT_GREY);
   }
 };
 
