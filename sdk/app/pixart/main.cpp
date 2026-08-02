@@ -3,11 +3,11 @@
 // 128x128 canvas locked to the PICO-8 16-color palette. Two view modes:
 //   - PIXEL:    a 16x16 window zoomed 8x (each logical pixel = an 8x8 dot),
 //               panned over the full canvas; this is where you draw.
-//   - OVERVIEW: the whole 128x128 canvas at 1:1, view-only. A tap moves the
-//               viewport box (snapped to 16px tiles). Return with the View btn.
+//   - OVERVIEW: the whole 128x128 canvas at 1:1, view-only. A tap or drag moves
+//               the viewport box (snapped to 16px tiles). Return with View btn.
 // Toolbar (two rows): row A = Pen / Hand / Eyedropper / Undo / Redo;
-//                     row B = View / Grid / Copy / Paste.
-// Undo/Redo keep up to UNDO_MAX steps. Copy/Paste act on the current 16x16
+//                     row B = View / Grid / Cut / Copy / Paste.
+// Undo/Redo keep up to UNDO_MAX steps. Cut/Copy/Paste act on the current 16x16
 // viewport tile. Input is touch/mouse (b8HifGetMouseStatus).
 //
 // NOTE: pico8 rectfill()/rect() take x1/y1 as EXCLUSIVE (right/bottom edge not
@@ -42,15 +42,38 @@ static constexpr int PITCH   = 21;            // toolbar button pitch
 static constexpr int STAT_Y  = BARB_Y + 20;
 
 static constexpr int UNDO_MAX = 4;            // undo / redo depth
+static constexpr int FX_FRAMES = 8;           // copy/paste "pressed" nudge duration
 static constexpr int SZ = CANVAS * CANVAS;    // bytes per canvas snapshot
 
-// toolbar button ids. Row A = [0..4], row B = [5..8].
-enum Btn { B_PEN = 0, B_HAND, B_EYE, B_UNDO, B_REDO, B_VIEW, B_GRID, B_COPY, B_PASTE, B_N };
-static constexpr int ROWA = 5;                // first 5 ids are on row A
-static constexpr int ROWB = B_N - ROWA;       // remaining ids on row B
+// toolbar button ids. Screen positions come from btnPos(); the two rows are:
+//   A: [Pen Hand Eye]     (left)  ...  [Undo Redo]     (right, edge-aligned)
+//   B: [Copy Paste Cut]   (left)  ...  [View Grid Help] (right, edge-aligned)
+enum Btn { B_PEN = 0, B_HAND, B_EYE, B_UNDO, B_REDO,
+           B_VIEW, B_GRID, B_CUT, B_COPY, B_PASTE, B_HELP, B_N };
 
 static inline int clampi(int v, int lo, int hi){
   return v < lo ? lo : (v > hi ? hi : v);
+}
+
+// Top-left screen position of toolbar button `id`. Pen/Hand/Eye and
+// Copy/Paste/Help hug the left; Undo/Redo and View/Grid/Cut are right-aligned
+// to the screen edge. Both hit-testing and drawing go through this, so the two
+// stay in sync.
+static void btnPos(int id, int& x, int& y){
+  switch (id) {
+    case B_PEN:   x = 0 * PITCH;             y = BARA_Y; break;
+    case B_HAND:  x = 1 * PITCH;             y = BARA_Y; break;
+    case B_EYE:   x = 2 * PITCH;             y = BARA_Y; break;
+    case B_UNDO:  x = SCRW - ICON - PITCH;   y = BARA_Y; break;
+    case B_REDO:  x = SCRW - ICON;           y = BARA_Y; break;
+    case B_COPY:  x = 0 * PITCH;             y = BARB_Y; break;
+    case B_PASTE: x = 1 * PITCH;             y = BARB_Y; break;
+    case B_CUT:   x = 2 * PITCH;             y = BARB_Y; break;
+    case B_VIEW:  x = SCRW - ICON - 2*PITCH; y = BARB_Y; break;
+    case B_GRID:  x = SCRW - ICON - PITCH;   y = BARB_Y; break;
+    case B_HELP:  x = SCRW - ICON;           y = BARB_Y; break;
+    default:      x = 0;                     y = 0;      break;
+  }
 }
 
 // 16x16 1-bit icons (bit 15 = leftmost pixel), indexed by Btn.
@@ -90,16 +113,26 @@ static const uint16_t kIcon[B_N][16] = {
     0b0000010000100000,0b1111111111111111,0b0000010000100000,0b0000010000100000,
     0b0000010000100000,0b0000010000100000,0b1111111111111111,0b0000010000100000,
     0b0000010000100000,0b0000010000100000,0b0000010000100000,0b0000010000100000 },
-  { // B_COPY : two overlapping sheets
-    0b0000000000000000,0b0000000000000000,0b0011111111000000,0b0010000001000000,
-    0b0010000001000000,0b0010001111111100,0b0010001000000100,0b0010001000000100,
-    0b0010001000000100,0b0011111111000100,0b0000001000000100,0b0000001000000100,
-    0b0000001000000100,0b0000001111111100,0b0000000000000000,0b0000000000000000 },
-  { // B_PASTE : clipboard with clip tab
-    0b0000000000000000,0b0000001111000000,0b0000001111000000,0b0001111111111000,
-    0b0001000000001000,0b0001000000001000,0b0001000000001000,0b0001000000001000,
-    0b0001000000001000,0b0001000000001000,0b0001000000001000,0b0001000000001000,
-    0b0001000000001000,0b0001000000001000,0b0001111111111000,0b0000000000000000 },
+  { // B_CUT : scissors (blades crossing in an X, two round finger handles below)
+    0b0010000000000100,0b0001000000001000,0b0000100000010000,0b0000010000100000,
+    0b0000001001000000,0b0000000110000000,0b0000000110000000,0b0000001001000000,
+    0b0000010000100000,0b0000100000010000,0b0001000000001000,0b0001100000011000,
+    0b0010010000100100,0b0010010000100100,0b0001100000011000,0b0000000000000000 },
+  { // B_COPY : two overlapping sheets, front one lined with text
+    0b0000000000000000,0b0000000000000000,0b0000001111111100,0b0000001000000100,
+    0b0000001000000100,0b0011111111000100,0b0010000001000100,0b0010000001000100,
+    0b0010111101000100,0b0010000001000100,0b0010111101000100,0b0010000001111100,
+    0b0010111101000000,0b0010000001000000,0b0011111111000000,0b0000000000000000 },
+  { // B_PASTE : clipboard (with left clip) behind a lined document sheet
+    0b0000000000000000,0b0011111111110000,0b0010000000010000,0b0010000000010000,
+    0b0010000000010000,0b1110001111111100,0b1010001000000100,0b1010001000000100,
+    0b1110001011110100,0b0010001000000100,0b0010001011110100,0b0010001000000100,
+    0b0011111011110100,0b0000001000000100,0b0000001111111100,0b0000000000000000 },
+  { // B_HELP : question mark (bowl curving down to a centered stem + dot)
+    0b0000000000000000,0b0000011111100000,0b0000111001110000,0b0000110000110000,
+    0b0000000000110000,0b0000000001110000,0b0000000011100000,0b0000000111000000,
+    0b0000000110000000,0b0000000110000000,0b0000000110000000,0b0000000000000000,
+    0b0000000110000000,0b0000000110000000,0b0000000000000000,0b0000000000000000 },
 };
 
 class PixArt : public Pico8 {
@@ -114,8 +147,10 @@ class PixArt : public Pico8 {
   int  tool = B_PEN;
   bool overview = false;           // false: PIXEL mode, true: OVERVIEW mode
   bool grid = false;               // grid overlay on/off
+  bool help = false;               // HELP overlay: shortcuts only, editing disabled
   bool prevDrag = false;
   int  grabCX = 0, grabCY = 0;     // Hand-tool grab anchor (canvas coords)
+  int  fxId = -1, fxTtl = 0;       // button-press feedback (copy/paste): id + frames left
 
   // push a copy of `src` onto a snapshot stack, dropping the oldest when full
   static void push(uint8_t* base, int& cnt, const uint8_t* src){
@@ -150,6 +185,16 @@ class PixArt : public Pico8 {
     for (int y = 0; y < VIEW; ++y)
       for (int x = 0; x < VIEW; ++x) canvas[vy + y][vx + x] = clip[y][x];
   }
+  void doCut(){                    // copy the tile to the clipboard, then clear it
+    doCopy();
+    beginStroke();
+    for (int y = 0; y < VIEW; ++y)
+      for (int x = 0; x < VIEW; ++x) canvas[vy + y][vx + x] = 0;
+  }
+  // cut/copy/paste are overview-only; on a successful action flash the button (nudge +1,+1)
+  void fireCut(){   if (!overview) return;             doCut();   fxId = B_CUT;   fxTtl = FX_FRAMES; }
+  void fireCopy(){  if (!overview) return;             doCopy();  fxId = B_COPY;  fxTtl = FX_FRAMES; }
+  void firePaste(){ if (!overview || !hasClip) return; doPaste(); fxId = B_PASTE; fxTtl = FX_FRAMES; }
 
   // Aseprite-compatible keyboard shortcuts (keys come from the HIF keyboard
   // FIFO: low 16 bits = ASCII, high 16 bits = modifier status).
@@ -163,8 +208,9 @@ class PixArt : public Pico8 {
         switch (ascii) {
           case 'z':            doUndo(); break;               // Ctrl+Z
           case 'y': case 'Z':  doRedo(); break;               // Ctrl+Y / Ctrl+Shift+Z
-          case 'c': if (overview) doCopy();  break;           // Ctrl+C (overview only)
-          case 'v': if (overview) doPaste(); break;           // Ctrl+V (overview only)
+          case 'x': fireCut();   break;                       // Ctrl+X (overview only)
+          case 'c': fireCopy();  break;                       // Ctrl+C (overview only)
+          case 'v': firePaste(); break;                       // Ctrl+V (overview only)
         }
       } else {
         switch (ascii) {
@@ -184,8 +230,10 @@ class PixArt : public Pico8 {
       case B_REDO:  doRedo(); break;
       case B_VIEW:  overview = !overview; break;
       case B_GRID:  grid = !grid; break;
-      case B_COPY:  if (overview) doCopy();  break;   // copy/paste = overview only
-      case B_PASTE: if (overview) doPaste(); break;
+      case B_CUT:   fireCut();   break;               // cut/copy/paste = overview only
+      case B_COPY:  fireCopy();  break;
+      case B_PASTE: firePaste(); break;
+      case B_HELP:  help = !help; break;              // toggle the HELP overlay
     }
   }
 
@@ -198,6 +246,7 @@ class PixArt : public Pico8 {
 
   void _update() override {
     pollKeys();
+    if (fxTtl > 0) --fxTtl;                 // fade the copy/paste press feedback
 
     const b8HifMouseStatus* ms = b8HifGetMouseStatus();
     const int  mx    = ms->mouse_x >> 4;   // fixed-point (/16) -> pixels
@@ -205,14 +254,18 @@ class PixArt : public Pico8 {
     const bool drag  = ms->is_dragging;
     const bool press = drag && !prevDrag;
 
+    if (help) {                     // HELP overlay is modal: no editing; a tap exits
+      if (press) help = false;
+      prevDrag = drag;
+      return;
+    }
+
     if (drag) {
       if (my < EDIT_H) {                        // inside the edit area
         if (overview) {
-          // view-only: a tap moves the viewport box, snapped to 16px tiles
-          if (press) {
-            vx = clampi((mx / GRID_PX) * GRID_PX, 0, VMAX);
-            vy = clampi((my / GRID_PX) * GRID_PX, 0, VMAX);
-          }
+          // view-only: tap or drag moves the viewport box, snapped to 16px tiles
+          vx = clampi((mx / GRID_PX) * GRID_PX, 0, VMAX);
+          vy = clampi((my / GRID_PX) * GRID_PX, 0, VMAX);
         } else {
           const int cx = clampi(vx + mx / DOT, 0, CANVAS - 1);
           const int cy = clampi(vy + my / DOT, 0, CANVAS - 1);
@@ -236,14 +289,12 @@ class PixArt : public Pico8 {
           const int col = clampi(mx / PAL_SW, 0, PAL_COLS - 1);
           const int row = (my - PAL_Y) / PAL_SW;   // 0 (top) or 1 (bottom)
           sel = clampi(row * PAL_COLS + col, 0, 15);
-        } else if (my >= BARA_Y && my < BARA_Y + ICON) {
-          // match the drawn layout: Undo/Redo shifted right by ICON
-          for (int i = 0; i < ROWA; ++i) {
-            const int bx = i * PITCH + (i >= B_UNDO ? ICON : 0);
-            if (mx >= bx && mx < bx + ICON) { dispatch(i); break; }
+          tool = B_PEN;                            // picking a color implies "draw"
+        } else {                                   // toolbar buttons (positions from btnPos)
+          for (int id = 0; id < B_N; ++id) {
+            int bx, by; btnPos(id, bx, by);
+            if (mx >= bx && mx < bx + ICON && my >= by && my < by + ICON) { dispatch(id); break; }
           }
-        } else if (my >= BARB_Y && my < BARB_Y + ICON) {
-          const int i = mx / PITCH; if (i < ROWB) dispatch(ROWA + i);
         }
       }
     }
@@ -258,13 +309,32 @@ class PixArt : public Pico8 {
     }
   }
 
-  void drawButton(int id, int bx, int by, Color fg, bool active){
+  void drawButton(int id, int bx, int by, Color fg, bool pressed = false){
     rectfill(bx, by, bx + ICON, by + ICON, WHITE);      // button bg (white panel)
-    drawIcon(bx, by, id, fg);
-    if (active) rect(bx - 1, by - 1, bx + ICON, by + ICON, LIGHT_GREY);
+    const int d = pressed ? 1 : 0;                       // press feedback: nudge (+1,+1)
+    drawIcon(bx + d, by + d, id, fg);
+  }
+
+  // full-screen keyboard-shortcut list; nothing of the editor is drawn behind it
+  void drawHelp(){
+    cls(DARK_BLUE);
+    int y = 6;
+    sprint(4, y, WHITE, "SHORTCUTS");        y += 16;
+    sprint(4, y, LIGHT_GREY, "B  PEN");       y += 11;
+    sprint(4, y, LIGHT_GREY, "H  HAND");      y += 11;
+    sprint(4, y, LIGHT_GREY, "I  EYEDROPPER"); y += 11;
+    sprint(4, y, LIGHT_GREY, "G  GRID");      y += 15;
+    sprint(4, y, LIGHT_GREY, "CTRL+Z  UNDO"); y += 11;
+    sprint(4, y, LIGHT_GREY, "CTRL+Y  REDO"); y += 15;
+    sprint(4, y, WHITE, "OVERVIEW ONLY:");    y += 11;
+    sprint(4, y, LIGHT_GREY, "CTRL+X  CUT");  y += 11;
+    sprint(4, y, LIGHT_GREY, "CTRL+C  COPY"); y += 11;
+    sprint(4, y, LIGHT_GREY, "CTRL+V  PASTE"); y += 16;
+    sprint(4, y, BLUE, "TAP TO RETURN");
   }
 
   void _draw() override {
+    if (help) { drawHelp(); return; }        // HELP overlay replaces the whole screen
     cls(BLACK);
 
     if (overview) {
@@ -290,15 +360,20 @@ class PixArt : public Pico8 {
     }
 
     if (grid) {                                  // overlay grid lines
-      for (int g = 0; g <= EDIT_H; g += GRID_PX) {
-        rectfill(g, 0, g + 1, EDIT_H, (Color)5); // vertical
-        rectfill(0, g, EDIT_H, g + 1, (Color)5); // horizontal
-      }
+      // OVERVIEW draws the canvas 1:1 (no pan), so grid lines sit at fixed screen
+      // positions. In PIXEL mode the slice is panned by vx/vy, so the grid must
+      // scroll with it (offset by the sub-cell part of the pan) to stay aligned
+      // with the pixels under it as the Hand tool moves 1 canvas-pixel at a time.
+      const int offx = overview ? 0 : (vx * DOT) % GRID_PX;
+      const int offy = overview ? 0 : (vy * DOT) % GRID_PX;
+      for (int g = -offx; g <= EDIT_H; g += GRID_PX)
+        if (g >= 0) rectfill(g, 0, g + 1, EDIT_H, (Color)5); // vertical
+      for (int g = -offy; g <= EDIT_H; g += GRID_PX)
+        if (g >= 0) rectfill(0, g, EDIT_H, g + 1, (Color)5); // horizontal
     }
     // viewport box: 1px OUTSIDE the edited region [vx,vx+VIEW-1] x [vy,vy+VIEW-1].
     // Edges past the canvas edge (e.g. vx==0 -> left col -1) clip off-screen.
     if (overview) rect(vx - 1, vy - 1, vx + VIEW, vy + VIEW, WHITE);
-    rect(0, 0, EDIT_H, EDIT_H, (Color)5);        // edit-area border
 
     // white background for everything below the palette (toolbars sit on white)
     rectfill(0, PAL_Y + PAL_H, SCRW, SCRH, WHITE);
@@ -315,32 +390,31 @@ class PixArt : public Pico8 {
       rect(sx, sy, sx + PAL_SW - 1, sy + PAL_SW - 1, WHITE);
     }
 
-    // toolbar row A: Pen / Hand / Eye / Undo / Redo
-    for (int i = 0; i < ROWA; ++i) {
+    // toolbar buttons (positions via btnPos). fg = BLACK when active/available,
+    // LIGHT_GREY when inactive/disabled; the tool trio shows the current tool black.
+    for (int id = 0; id < B_N; ++id) {
       Color fg = BLACK;
-      bool active = false;
-      if (i < 3) {                          // Pen/Hand/Eye are inert in overview
-        if (overview) fg = LIGHT_GREY;
-        else active = (i == tool);
-      } else {
-        if (i == B_UNDO && uCount == 0) fg = LIGHT_GREY;
-        if (i == B_REDO && rCount == 0) fg = LIGHT_GREY;
+      switch (id) {
+        case B_PEN: case B_HAND: case B_EYE: fg = (id == tool) ? BLACK : LIGHT_GREY; break;
+        case B_UNDO:  if (uCount == 0)               fg = LIGHT_GREY; break;
+        case B_REDO:  if (rCount == 0)               fg = LIGHT_GREY; break;
+        // View (magnifier): black while NOT in overview (tap to zoom out), grey once in it.
+        case B_VIEW:  if (overview)                  fg = LIGHT_GREY; break;
+        // Grid: ON = black, OFF = light grey (toggle indicated by icon color).
+        case B_GRID:  if (!grid)                     fg = LIGHT_GREY; break;
+        case B_CUT:   if (!overview)                 fg = LIGHT_GREY; break;  // overview only
+        case B_COPY:  if (!overview)                 fg = LIGHT_GREY; break;  // overview only
+        case B_PASTE: if (!overview || !hasClip)     fg = LIGHT_GREY; break;
+        case B_HELP:  break;                          // always available
       }
-      // Undo/Redo are shifted right by ICON to separate them from Pen/Hand/Eye
-      const int bx = i * PITCH + (i >= B_UNDO ? ICON : 0);
-      drawButton(i, bx, BARA_Y, fg, active);
+      int bx, by; btnPos(id, bx, by);
+      const bool pressed = (fxTtl > 0 && fxId == id);   // cut/copy/paste tap flash
+      drawButton(id, bx, by, fg, pressed);
     }
-    // toolbar row B: View / Grid / Copy / Paste
-    for (int j = 0; j < ROWB; ++j) {
-      const int id = ROWA + j;
-      Color fg = BLACK;
-      // View (magnifier): black while NOT in overview (tap to zoom out), grey once in it; no active frame.
-      if (id == B_VIEW  && overview)               fg = LIGHT_GREY;
-      if (id == B_COPY  && !overview)              fg = LIGHT_GREY;  // overview only
-      if (id == B_PASTE && (!overview || !hasClip)) fg = LIGHT_GREY;
-      bool active = (id == B_GRID && grid);
-      drawButton(id, j * PITCH, BARB_Y, fg, active);
-    }
+    // light-grey box grouping the three mutually-exclusive tools (drawn over the
+    // button panels so its left edge stays visible at column 0). Top edge nudged
+    // up 1px (BARA_Y-2) for a touch more breathing room above the icons.
+    rect(0, BARA_Y - 2, 2 * PITCH + ICON, BARA_Y + ICON, LIGHT_GREY);
   }
 };
 
