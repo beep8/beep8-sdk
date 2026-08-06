@@ -59,4 +59,20 @@ namespace png {
                     const uint8_t* palette, int palette_count,
                     uint8_t* out, int out_cap);
 
+  // Decode an indexed PNG (as produced by EncodeIndexed) back into palette
+  // indices. Handles color type 3, 8-bit, all five PNG row filters, and a
+  // single stored-deflate IDAT -- i.e. exactly what EncodeIndexed emits (the
+  // encoder writes filter 0 only, but the decoder accepts 0..4). Chunk CRC-32
+  // and the zlib Adler-32 are verified. Compressed (huffman) deflate and
+  // multi-IDAT streams are *not* supported.
+  //   png, png_len : the PNG byte stream.
+  //   idx, idx_cap : output buffer, receives w*h row-major index bytes.
+  //   w_out, h_out : receive the decoded dimensions (either may be null).
+  // Returns the number of index bytes written (w*h, > 0), or 0 on malformed
+  // input, an unsupported feature, a CRC/Adler mismatch, or idx_cap too small.
+  // Does not allocate.
+  int DecodeIndexed(const uint8_t* png, int png_len,
+                    uint8_t* idx, int idx_cap,
+                    int* w_out, int* h_out);
+
 }

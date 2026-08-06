@@ -63,6 +63,35 @@ struct Writer {
   }
 };
 
+// ---- decode helpers --------------------------------------------------------
+
+inline uint32_t rd_be32(const uint8_t* p) {
+  return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+         ((uint32_t)p[2] << 8)  |  (uint32_t)p[3];
+}
+
+inline bool type_is(const uint8_t* t, const char* s) {
+  return t[0] == (uint8_t)s[0] && t[1] == (uint8_t)s[1] &&
+         t[2] == (uint8_t)s[2] && t[3] == (uint8_t)s[3];
+}
+
+// CRC-32 over TYPE+DATA (len bytes) compared against the chunk's trailing CRC.
+inline bool crc_ok(const uint8_t* type_and_data, int len, uint32_t expect) {
+  uint32_t c = 0xFFFFFFFFu;
+  for (int i = 0; i < len; ++i) c = crc32_byte(c, type_and_data[i]);
+  return (c ^ 0xFFFFFFFFu) == expect;
+}
+
+// PNG Paeth predictor on the three neighbour bytes (left, up, up-left).
+inline int paeth(int a, int b, int c) {
+  int p = a + b - c;
+  int pa = p - a; if (pa < 0) pa = -pa;
+  int pb = p - b; if (pb < 0) pb = -pb;
+  int pc = p - c; if (pc < 0) pc = -pc;
+  if (pa <= pb && pa <= pc) return a;
+  return (pb <= pc) ? b : c;
+}
+
 } // namespace
 
 int EncodeIndexed(const uint8_t* idx, int w, int h,
@@ -130,6 +159,90 @@ int EncodeIndexed(const uint8_t* idx, int w, int h,
   W.endChunk();
 
   return W.ok ? W.pos : 0;
+}
+
+int DecodeIndexed(const uint8_t* png, int png_len,
+                  uint8_t* idx, int idx_cap, int* w_out, int* h_out) {
+  if (!png || !idx || png_len < 8) return 0;
+  static const uint8_t sig[8] = {0x89,'P','N','G',0x0d,0x0a,0x1a,0x0a};
+  for (int i = 0; i < 8; ++i) if (png[i] != sig[i]) return 0;
+
+  // Walk the chunk list: capture IHDR geometry and the single IDAT payload,
+  // verifying every chunk CRC as we go.
+  int w = 0, h = 0; bool have_ihdr = false;
+  const uint8_t* idat = nullptr; int idat_len = 0;
+  int p = 8;
+  while (p + 12 <= png_len) {
+    const uint32_t clen = rd_be32(png + p);
+    if (clen > (uint32_t)(png_len - p - 12)) return 0;   // truncated chunk
+    const uint8_t* type = png + p + 4;
+    const uint8_t* data = png + p + 8;
+    if (!crc_ok(type, 4 + (int)clen, rd_be32(data + clen))) return 0;
+
+    if (type_is(type, "IHDR")) {
+      if (clen != 13) return 0;
+      w = (int)rd_be32(data); h = (int)rd_be32(data + 4);
+      if (w <= 0 || h <= 0) return 0;
+      // bit depth 8, colour type 3, and the three fixed zeros (see encoder).
+      if (data[8] != 8 || data[9] != 3 || data[10] || data[11] || data[12]) return 0;
+      if (w > idx_cap / h) return 0;                     // w*h must fit idx_cap
+      have_ihdr = true;
+    } else if (type_is(type, "IDAT")) {
+      if (idat) return 0;                                // single IDAT only
+      idat = data; idat_len = (int)clen;
+    } else if (type_is(type, "IEND")) {
+      break;
+    }
+    p += 12 + (int)clen;
+  }
+  if (!have_ihdr || !idat || idat_len < 2 + 4) return 0;
+
+  // zlib wrapper: 2-byte header, stored-deflate body, 4-byte Adler-32 trailer.
+  const uint8_t* z = idat + 2;
+  const int      zlen = idat_len - 2 - 4;
+  const uint32_t adler_expect = rd_be32(idat + idat_len - 4);
+
+  int zp = 0, rem = 0; bool final_seen = false;   // stored-block byte cursor
+  uint32_t sa = 1, sb = 0;                         // Adler-32 over raw bytes
+  const int stride = w;
+
+  for (int y = 0; y < h; ++y) {
+    int filt = -1;
+    for (int col = 0; col < w + 1; ++col) {
+      if (rem == 0) {                              // advance to the next block
+        if (final_seen) return 0;
+        if (zp + 5 > zlen) return 0;
+        if (((z[zp] >> 1) & 3) != 0) return 0;     // BTYPE must be 00 (stored)
+        if (z[zp] & 1) final_seen = true;          // BFINAL
+        rem = z[zp + 1] | (z[zp + 2] << 8);        // LEN (NLEN not validated)
+        zp += 5;
+        if (rem == 0) return 0;                    // empty block mid-image
+      }
+      if (zp >= zlen) return 0;
+      const uint8_t rb = z[zp++]; --rem;
+      sa = (sa + rb) % 65521u; sb = (sb + sa) % 65521u;
+
+      if (col == 0) { filt = rb; if (filt > 4) return 0; continue; }
+      const int x    = col - 1;
+      const int left = x > 0 ? idx[y * stride + x - 1] : 0;
+      const int up   = y > 0 ? idx[(y - 1) * stride + x] : 0;
+      const int ul   = (x > 0 && y > 0) ? idx[(y - 1) * stride + x - 1] : 0;
+      int v = rb;
+      switch (filt) {
+        case 1: v = rb + left;                 break;
+        case 2: v = rb + up;                   break;
+        case 3: v = rb + ((left + up) >> 1);   break;
+        case 4: v = rb + paeth(left, up, ul);  break;
+        default: /* 0 = None */                break;
+      }
+      idx[y * stride + x] = (uint8_t)v;
+    }
+  }
+  if (((sb << 16) | sa) != adler_expect) return 0;
+
+  if (w_out) *w_out = w;
+  if (h_out) *h_out = h;
+  return w * h;
 }
 
 } // namespace png

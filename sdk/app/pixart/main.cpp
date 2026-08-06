@@ -7,7 +7,7 @@
 //               the viewport box (snapped to 16px tiles). Return with View btn.
 // Toolbar (three rows): row A = Pen / Hand / Eyedropper / Fill / Undo / Redo;
 //   row B = Copy / Paste / Cut / View / Grid / Help;
-//   row C = Flip-H / Flip-V / Mirror ... Save (right-aligned).
+//   row C = Flip-H / Flip-V / Mirror ... Load / Save (right-aligned).
 // Undo/Redo keep up to UNDO_MAX steps. Cut/Copy/Paste act on the current 16x16
 // viewport tile in OVERVIEW mode; the two flips mirror it in either mode (the
 // visible slice in PIXEL, the white box in OVERVIEW). Mirror is a persistent
@@ -18,9 +18,10 @@
 // NOTE: pico8 rectfill()/rect() take x1/y1 as EXCLUSIVE (right/bottom edge not
 // drawn), so fills use +size and a 1px-wide line is (a, a+1).
 //
-// Save (row C, right) encodes the canvas to an indexed PNG and pushes it to the
-// cloud (png::EncodeIndexed -> base64url -> cloudsave::Set). Not yet wired
-// (later increments): Load (needs a PNG decoder), local PNG download, and
+// Save / Load (row C, right) sync the canvas with a global cloud slot: Save
+// encodes to an indexed PNG (png::EncodeIndexed -> base64url -> cloudsave::Set),
+// Load reverses it (cloudsave::Get -> base64 -> png::DecodeIndexed) and is
+// undoable. Not yet wired (later increments): local PNG download, and
 // share-to-the-CC0-asset-commons.
 #include <pico8.h>
 #include <beep8.h>
@@ -33,10 +34,17 @@
 // constant so the save scratch buffer can be a fixed static array.
 #define B64_CAP(n) ((((n) + 2) / 3) * 4 + 1)
 
-// Global cloud slot PixArt saves into (16 alnum chars; see cloudsave.h). This
-// is a single shared slot for now -- a first end-to-end "save works" milestone;
-// the per-artwork / per-user slot model comes with the gallery increment.
+// Global cloud slot PixArt saves into / loads from (16 alnum chars; see
+// cloudsave.h). This is a single shared slot for now -- a first end-to-end
+// milestone; the per-artwork / per-user slot model comes with the gallery
+// increment.
 static const char kSaveKey[] = "PIXARTCANVAS0001";
+
+// Shared save/load scratch, used one operation at a time and kept off the stack
+// (~16.6KB PNG + ~22KB base64 + 16KB decode temp). 128 == CANVAS below.
+static uint8_t g_png[PNG_ENCODE_CAP(128, 128)];
+static char    g_b64[B64_CAP(PNG_ENCODE_CAP(128, 128))];
+static uint8_t g_tmp[128 * 128];
 
 using namespace pico8;
 
@@ -67,10 +75,10 @@ static constexpr int SZ = CANVAS * CANVAS;    // bytes per canvas snapshot
 // toolbar button ids. Screen positions come from btnPos(); the three rows are:
 //   A: [Pen Hand Eye Fill] (left) ...  [Undo Redo]     (right, edge-aligned)
 //   B: [Copy Paste Cut]   (left)  ...  [View Grid Help] (right, edge-aligned)
-//   C: [FlipH FlipV Mirror] (left)
+//   C: [FlipH FlipV Mirror] (left) ...  [Load Save]      (right, edge-aligned)
 enum Btn { B_PEN = 0, B_HAND, B_EYE, B_UNDO, B_REDO,
            B_VIEW, B_GRID, B_CUT, B_COPY, B_PASTE, B_HELP,
-           B_FLIPH, B_FLIPV, B_MIRROR, B_FILL, B_SAVE, B_N };
+           B_FLIPH, B_FLIPV, B_MIRROR, B_FILL, B_SAVE, B_LOAD, B_N };
 
 static inline int clampi(int v, int lo, int hi){
   return v < lo ? lo : (v > hi ? hi : v);
@@ -97,6 +105,7 @@ static void btnPos(int id, int& x, int& y){
     case B_FLIPH: x = 0 * PITCH;             y = BARC_Y; break;
     case B_FLIPV: x = 1 * PITCH;             y = BARC_Y; break;
     case B_MIRROR:x = 2 * PITCH;             y = BARC_Y; break;
+    case B_LOAD:  x = SCRW - ICON - PITCH;   y = BARC_Y; break;
     case B_SAVE:  x = SCRW - ICON;           y = BARC_Y; break;
     default:      x = 0;                     y = 0;      break;
   }
@@ -186,6 +195,11 @@ static const uint16_t kIcon[B_N][16] = {
     0b0100001001000010,0b0100001111000010,0b0100000000000010,0b0111111111111110,
     0b0100000000000010,0b0101111111110010,0b0101000000010010,0b0101111111110010,
     0b0101000000010010,0b0101111111110010,0b0111111111111110,0b0000000000000000 },
+  { // B_LOAD : download arrow (shaft + wide head) dropping onto a tray line
+    0b0000000000000000,0b0000001111000000,0b0000001111000000,0b0000001111000000,
+    0b0000001111000000,0b0000001111000000,0b0000001111000000,0b0011111111111100,
+    0b0001111111111000,0b0000111111110000,0b0000011111100000,0b0000001111000000,
+    0b0000000110000000,0b0000000000000000,0b0111111111111110,0b0000000000000000 },
 };
 
 // U/D mirror icon: the B_MIRROR bitmap rotated 90 degrees (trapezoids facing a
@@ -214,9 +228,10 @@ class PixArt : public Pico8 {
   bool prevDrag = false;
   int  grabCX = 0, grabCY = 0;     // Hand-tool grab anchor (canvas coords)
   int  fxId = -1, fxTtl = 0;       // button-press feedback (copy/paste): id + frames left
-  int  savePhase = 0;              // 0 idle; 1/2: paint "SAVING..." for a frame before the blocking save
-  int  msgTtl = 0;                 // frames left to show saveMsg
-  const char* saveMsg = "";        // last save result banner ("SAVED" / "SAVE FAILED")
+  int  netPhase = 0;               // 0 idle; 1/2: paint status a frame before the blocking net op
+  int  netOp = 0;                  // 0 = save, 1 = load
+  int  msgTtl = 0;                 // frames left to show netMsg
+  const char* netMsg = "";         // last result banner ("SAVED" / "LOADED" / ...)
 
   // push a copy of `src` onto a snapshot stack, dropping the oldest when full
   static void push(uint8_t* base, int& cnt, const uint8_t* src){
@@ -321,14 +336,28 @@ class PixArt : public Pico8 {
   // cloud slot. Blocking (cloudsave::Set does the HTTP round-trips internally).
   // The two scratch buffers are static (~16.6KB + ~22KB) to stay off the stack.
   bool doSave(){
-    static uint8_t png[PNG_ENCODE_CAP(CANVAS, CANVAS)];
-    static char    b64[B64_CAP(PNG_ENCODE_CAP(CANVAS, CANVAS))];
     const int n = png::EncodeIndexed(&canvas[0][0], CANVAS, CANVAS,
-                                      png::kPico8Palette, 16, png, sizeof(png));
+                                     png::kPico8Palette, 16, g_png, sizeof(g_png));
     if (n <= 0) return false;
-    const int m = base64::encode(png, n, b64, sizeof(b64));
+    const int m = base64::encode(g_png, n, g_b64, sizeof(g_b64));
     if (m <= 0) return false;
-    return cloudsave::Set(kSaveKey, b64, m);
+    return cloudsave::Set(kSaveKey, g_b64, m);
+  }
+
+  // Fetch the cloud slot, decode the PNG, and replace the canvas. Blocking.
+  // Returns 1 on success, 0 if the slot is empty, -1 on transport/decode error.
+  int doLoad(){
+    const int m = cloudsave::Get(kSaveKey, g_b64, sizeof(g_b64));
+    if (m == 0) return 0;                     // slot never set
+    if (m <  0) return -1;                     // bad key / transport error
+    const int n = base64::decode(g_b64, m, g_png, sizeof(g_png));
+    if (n <= 0) return -1;
+    int w = 0, h = 0;
+    const int px = png::DecodeIndexed(g_png, n, g_tmp, sizeof(g_tmp), &w, &h);
+    if (px <= 0 || w != CANVAS || h != CANVAS) return -1;
+    beginStroke();                             // make the load undoable
+    memcpy(canvas, g_tmp, SZ);
+    return 1;
   }
 
   // Aseprite-compatible keyboard shortcuts (keys come from the HIF keyboard
@@ -373,7 +402,8 @@ class PixArt : public Pico8 {
       case B_FLIPH: fireFlipH(); break;               // flips = both modes
       case B_FLIPV: fireFlipV(); break;
       case B_MIRROR: mirror = (mirror + 1) % 3; break; // cycle off -> L/R -> U/D
-      case B_SAVE:  if (savePhase == 0) savePhase = 1; break;  // arm the (blocking) cloud save
+      case B_SAVE:  if (netPhase == 0) { netOp = 0; netPhase = 1; } break;  // arm cloud save
+      case B_LOAD:  if (netPhase == 0) { netOp = 1; netPhase = 1; } break;  // arm cloud load
     }
   }
 
@@ -390,14 +420,20 @@ class PixArt : public Pico8 {
     if (fxTtl > 0) --fxTtl;                 // fade the copy/paste press feedback
     if (msgTtl > 0) --msgTtl;               // fade the save-result banner
 
-    // Save is two-phase so "SAVING..." paints for a frame before we block on the
-    // HTTP round-trip: phase 1 arms it, phase 2 (next frame) runs the save.
-    if (savePhase == 1) {
-      savePhase = 2;
-    } else if (savePhase == 2) {
-      saveMsg = doSave() ? "SAVED" : "SAVE FAILED";
+    // Save/Load are two-phase so the "SAVING..." / "LOADING..." banner paints for
+    // a frame before we block on the HTTP round-trip: phase 1 arms it, phase 2
+    // (next frame) runs the blocking op.
+    if (netPhase == 1) {
+      netPhase = 2;
+    } else if (netPhase == 2) {
+      if (netOp == 0) {
+        netMsg = doSave() ? "SAVED" : "SAVE FAILED";
+      } else {
+        const int r = doLoad();
+        netMsg = (r > 0) ? "LOADED" : (r == 0 ? "NO DATA" : "LOAD FAILED");
+      }
       msgTtl  = 90;
-      savePhase = 0;
+      netPhase = 0;
     }
 
     const b8HifMouseStatus* ms = b8HifGetMouseStatus();
@@ -570,7 +606,7 @@ class PixArt : public Pico8 {
         case B_HELP:  break;                          // always available
         case B_FLIPH: case B_FLIPV: break;            // available in both modes
         case B_MIRROR: if (mirror == 0) fg = LIGHT_GREY; break;  // off = grey, on = black
-        case B_SAVE:  if (savePhase != 0) fg = LIGHT_GREY; break; // grey while a save is in flight
+        case B_SAVE: case B_LOAD: if (netPhase != 0) fg = LIGHT_GREY; break; // grey while a net op runs
       }
       int bx, by; btnPos(id, bx, by);
       const bool pressed = (fxTtl > 0 && fxId == id);   // cut/copy/paste tap flash
@@ -583,13 +619,14 @@ class PixArt : public Pico8 {
     // up 1px (BARA_Y-2) for a touch more breathing room above the icons.
     rect(0, BARA_Y - 2, 3 * PITCH + ICON, BARA_Y + ICON, LIGHT_GREY);
 
-    // save status banner, drawn on top of the edit area: "SAVING..." while the
-    // blocking save is pending, then the result for msgTtl frames.
-    if (savePhase != 0 || msgTtl > 0) {
-      const char* t = (savePhase != 0) ? "SAVING..." : saveMsg;
+    // net status banner, drawn on top of the edit area: "SAVING..."/"LOADING..."
+    // while the blocking op is pending, then the result for msgTtl frames.
+    if (netPhase != 0 || msgTtl > 0) {
+      const char* t = (netPhase != 0) ? (netOp == 0 ? "SAVING..." : "LOADING...")
+                                      : netMsg;
       rectfill(0, 54, SCRW, 74, BLACK);
       rect(0, 54, SCRW - 1, 73, WHITE);
-      sprint(34, 60, WHITE, t);
+      sprint(30, 60, WHITE, t);
     }
   }
 };
