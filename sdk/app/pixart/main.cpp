@@ -7,7 +7,7 @@
 //               the viewport box (snapped to 16px tiles). Return with View btn.
 // Toolbar (three rows): row A = Pen / Hand / Eyedropper / Fill / Undo / Redo;
 //   row B = Copy / Paste / Cut / View / Grid / Help;
-//   row C = Flip-H / Flip-V / Mirror ... Load / Save (right-aligned).
+//   row C = Flip-H / Flip-V / Mirror ... Download / Load / Save (right-aligned).
 // Undo/Redo keep up to UNDO_MAX steps. Cut/Copy/Paste act on the current 16x16
 // viewport tile in OVERVIEW mode; the two flips mirror it in either mode (the
 // visible slice in PIXEL, the white box in OVERVIEW). Mirror is a persistent
@@ -22,8 +22,9 @@
 // slot: Save encodes to an indexed PNG (png::EncodeIndexed -> base64url ->
 // cloudsave::Set), Load reverses it (cloudsave::Get -> base64 ->
 // png::DecodeIndexed) and is undoable. The slot key is per-device (see
-// kSlotField). Not yet wired (later increments): local PNG download, and
-// share-to-the-CC0-asset-commons.
+// kSlotField). Download (row C) saves the PNG to the user's device as a local
+// file over the SCI /download driver, streamed a chunk per frame to stay under
+// the 8KB FIFO. Not yet wired: share-to-the-CC0-asset-commons.
 #include <pico8.h>
 #include <beep8.h>
 #include <string.h>
@@ -31,6 +32,7 @@
 #include <base64.h>
 #include <cloudsave.h>
 #include <savedata.h>
+#include <download.h>
 
 // base64url-encoded length (incl. NUL) for n input bytes -- a compile-time
 // constant so the save scratch buffer can be a fixed static array.
@@ -101,14 +103,15 @@ static constexpr int BARC_Y  = BARB_Y + 20;  // toolbar row C (below row B)
 static constexpr int UNDO_MAX = 4;            // undo / redo depth
 static constexpr int FX_FRAMES = 8;           // copy/paste "pressed" nudge duration
 static constexpr int SZ = CANVAS * CANVAS;    // bytes per canvas snapshot
+static constexpr int DL_CHUNK = 4000;         // local-download bytes per frame (< 8KB SCI FIFO)
 
 // toolbar button ids. Screen positions come from btnPos(); the three rows are:
 //   A: [Pen Hand Eye Fill] (left) ...  [Undo Redo]     (right, edge-aligned)
 //   B: [Copy Paste Cut]   (left)  ...  [View Grid Help] (right, edge-aligned)
-//   C: [FlipH FlipV Mirror] (left) ...  [Load Save]      (right, edge-aligned)
+//   C: [FlipH FlipV Mirror] (left) ...  [DL Load Save]   (right, edge-aligned)
 enum Btn { B_PEN = 0, B_HAND, B_EYE, B_UNDO, B_REDO,
            B_VIEW, B_GRID, B_CUT, B_COPY, B_PASTE, B_HELP,
-           B_FLIPH, B_FLIPV, B_MIRROR, B_FILL, B_SAVE, B_LOAD, B_N };
+           B_FLIPH, B_FLIPV, B_MIRROR, B_FILL, B_SAVE, B_LOAD, B_DL, B_N };
 
 static inline int clampi(int v, int lo, int hi){
   return v < lo ? lo : (v > hi ? hi : v);
@@ -135,6 +138,7 @@ static void btnPos(int id, int& x, int& y){
     case B_FLIPH: x = 0 * PITCH;             y = BARC_Y; break;
     case B_FLIPV: x = 1 * PITCH;             y = BARC_Y; break;
     case B_MIRROR:x = 2 * PITCH;             y = BARC_Y; break;
+    case B_DL:    x = SCRW - ICON - 2*PITCH; y = BARC_Y; break;
     case B_LOAD:  x = SCRW - ICON - PITCH;   y = BARC_Y; break;
     case B_SAVE:  x = SCRW - ICON;           y = BARC_Y; break;
     default:      x = 0;                     y = 0;      break;
@@ -230,6 +234,12 @@ static const uint16_t kIcon[B_N][16] = {
     0b0000001111000000,0b0000001111000000,0b0000001111000000,0b0011111111111100,
     0b0001111111111000,0b0000111111110000,0b0000011111100000,0b0000001111000000,
     0b0000000110000000,0b0000000000000000,0b0111111111111110,0b0000000000000000 },
+  { // B_DL : download-to-device -- arrow dropping into an open basket (walls),
+    // distinct from B_LOAD's flat baseline (this one is "save to a file").
+    0b0000000000000000,0b0000001111000000,0b0000001111000000,0b0000001111000000,
+    0b0011111111111100,0b0001111111111000,0b0000111111110000,0b0000011111100000,
+    0b0000001111000000,0b0000000110000000,0b0000000000000000,0b0110000000000110,
+    0b0110000000000110,0b0110000000000110,0b0111111111111110,0b0000000000000000 },
 };
 
 // U/D mirror icon: the B_MIRROR bitmap rotated 90 degrees (trapezoids facing a
@@ -263,6 +273,8 @@ class PixArt : public Pico8 {
   int  msgTtl = 0;                 // frames left to show netMsg
   const char* netMsg = "";         // last result banner ("SAVED" / "LOADED" / ...)
   char slotKey[17] = "";           // this device's cloud slot key (16 alnum + NUL)
+  int  dlPhase = 0;                // 0 idle, 1 streaming a local-download PNG
+  int  dlOff = 0, dlLen = 0;       // bytes of the PNG (in g_png) sent / total
 
   // push a copy of `src` onto a snapshot stack, dropping the oldest when full
   static void push(uint8_t* base, int& cnt, const uint8_t* src){
@@ -416,6 +428,41 @@ class PixArt : public Pico8 {
     return 1;
   }
 
+  // Local download (browser Save-As) is streamed across frames to respect the
+  // 8KB SCI FIFO. startDownload() encodes the PNG and arms the pump;
+  // pumpDownload() emits the "<len>\n" header then one <=DL_CHUNK chunk per
+  // frame until the whole PNG is sent (host vdownload.js then offers the file).
+  void startDownload(){
+    if (dlPhase != 0 || netPhase != 0) return;
+    const int n = png::EncodeIndexed(&canvas[0][0], CANVAS, CANVAS,
+                                     png::kPico8Palette, 16, g_png, sizeof(g_png));
+    if (n <= 0) { netMsg = "DL FAILED"; msgTtl = 90; return; }
+    dlLen = n; dlOff = 0; dlPhase = 1;
+  }
+  void pumpDownload(){
+    if (dlPhase == 0) return;
+    download::Reset();
+    FILE* fp = fopen("/download/con0", "wb");
+    if (fp) {
+      if (dlOff == 0) {                        // first frame: the "<len>\n" header
+        char hdr[16];
+        const int hl = snprintf(hdr, sizeof(hdr), "%d\n", dlLen);
+        fwrite(hdr, 1, hl, fp);
+      }
+      int n = dlLen - dlOff;
+      if (n > DL_CHUNK) n = DL_CHUNK;
+      fwrite(g_png + dlOff, 1, n, fp);
+      fclose(fp);
+      dlOff += n;
+    } else {
+      dlOff = dlLen;                           // driver unavailable -> give up
+    }
+    if (dlOff >= dlLen) {
+      dlPhase = 0;
+      netMsg = "DOWNLOADED"; msgTtl = 90;
+    }
+  }
+
   // Aseprite-compatible keyboard shortcuts (keys come from the HIF keyboard
   // FIFO: low 16 bits = ASCII, high 16 bits = modifier status).
   void pollKeys(){
@@ -458,8 +505,9 @@ class PixArt : public Pico8 {
       case B_FLIPH: fireFlipH(); break;               // flips = both modes
       case B_FLIPV: fireFlipV(); break;
       case B_MIRROR: mirror = (mirror + 1) % 3; break; // cycle off -> L/R -> U/D
-      case B_SAVE:  if (netPhase == 0) { netOp = 0; netPhase = 1; } break;  // arm cloud save
-      case B_LOAD:  if (netPhase == 0) { netOp = 1; netPhase = 1; } break;  // arm cloud load
+      case B_SAVE:  if (netPhase == 0 && dlPhase == 0) { netOp = 0; netPhase = 1; } break;
+      case B_LOAD:  if (netPhase == 0 && dlPhase == 0) { netOp = 1; netPhase = 1; } break;
+      case B_DL:    startDownload(); break;   // stream the PNG to a local file
     }
   }
 
@@ -492,6 +540,7 @@ class PixArt : public Pico8 {
       msgTtl  = 90;
       netPhase = 0;
     }
+    pumpDownload();     // stream a pending local download, one chunk per frame
 
     const b8HifMouseStatus* ms = b8HifGetMouseStatus();
     const int  mx    = ms->mouse_x >> 4;   // fixed-point (/16) -> pixels
@@ -663,7 +712,8 @@ class PixArt : public Pico8 {
         case B_HELP:  break;                          // always available
         case B_FLIPH: case B_FLIPV: break;            // available in both modes
         case B_MIRROR: if (mirror == 0) fg = LIGHT_GREY; break;  // off = grey, on = black
-        case B_SAVE: case B_LOAD: if (netPhase != 0) fg = LIGHT_GREY; break; // grey while a net op runs
+        case B_SAVE: case B_LOAD: case B_DL:
+          if (netPhase != 0 || dlPhase != 0) fg = LIGHT_GREY; break;  // grey while a net/download op runs
       }
       int bx, by; btnPos(id, bx, by);
       const bool pressed = (fxTtl > 0 && fxId == id);   // cut/copy/paste tap flash
@@ -678,9 +728,10 @@ class PixArt : public Pico8 {
 
     // net status banner, drawn on top of the edit area: "SAVING..."/"LOADING..."
     // while the blocking op is pending, then the result for msgTtl frames.
-    if (netPhase != 0 || msgTtl > 0) {
+    if (netPhase != 0 || dlPhase != 0 || msgTtl > 0) {
       const char* t = (netPhase != 0) ? (netOp == 0 ? "SAVING..." : "LOADING...")
-                                      : netMsg;
+                    : (dlPhase  != 0) ? "DOWNLOAD..."
+                    : netMsg;
       rectfill(0, 54, SCRW, 74, BLACK);
       rect(0, 54, SCRW - 1, 73, WHITE);
       sprint(30, 60, WHITE, t);
