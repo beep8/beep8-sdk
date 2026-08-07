@@ -18,10 +18,11 @@
 // NOTE: pico8 rectfill()/rect() take x1/y1 as EXCLUSIVE (right/bottom edge not
 // drawn), so fills use +size and a 1px-wide line is (a, a+1).
 //
-// Save / Load (row C, right) sync the canvas with a global cloud slot: Save
-// encodes to an indexed PNG (png::EncodeIndexed -> base64url -> cloudsave::Set),
-// Load reverses it (cloudsave::Get -> base64 -> png::DecodeIndexed) and is
-// undoable. Not yet wired (later increments): local PNG download, and
+// Save / Load (row C, right) sync the canvas with this device's private cloud
+// slot: Save encodes to an indexed PNG (png::EncodeIndexed -> base64url ->
+// cloudsave::Set), Load reverses it (cloudsave::Get -> base64 ->
+// png::DecodeIndexed) and is undoable. The slot key is per-device (see
+// kSlotField). Not yet wired (later increments): local PNG download, and
 // share-to-the-CC0-asset-commons.
 #include <pico8.h>
 #include <beep8.h>
@@ -29,22 +30,51 @@
 #include <png.h>
 #include <base64.h>
 #include <cloudsave.h>
+#include <savedata.h>
 
 // base64url-encoded length (incl. NUL) for n input bytes -- a compile-time
 // constant so the save scratch buffer can be a fixed static array.
 #define B64_CAP(n) ((((n) + 2) / 3) * 4 + 1)
 
-// Global cloud slot PixArt saves into / loads from (16 alnum chars; see
-// cloudsave.h). This is a single shared slot for now -- a first end-to-end
-// milestone; the per-artwork / per-user slot model comes with the gallery
-// increment.
-static const char kSaveKey[] = "PIXARTCANVAS0001";
+// PixArt's cloud slot is PER-DEVICE, not one world-shared key: on first run a
+// random 16-char alnum key is generated and stashed in browser-local savedata
+// (localStorage, per-ROM scope), then reused, so each device owns a private
+// slot and devices no longer overwrite each other. (Per-DEVICE, not per-user
+// across devices -- true cross-device identity needs login, which arrives with
+// the gallery / beep8.assets service.) kSlotField is the savedata field the key
+// lives under; the resolved key is held in PixArt::slotKey.
+static const char kSlotField[] = "pixslot";
 
 // Shared save/load scratch, used one operation at a time and kept off the stack
 // (~16.6KB PNG + ~22KB base64 + 16KB decode temp). 128 == CANVAS below.
 static uint8_t g_png[PNG_ENCODE_CAP(128, 128)];
 static char    g_b64[B64_CAP(PNG_ENCODE_CAP(128, 128))];
 static uint8_t g_tmp[128 * 128];
+
+// --- browser-local savedata helpers (per-ROM localStorage over SCI) ----------
+// One command per open: "get <key>\n" -> value bytes then EOF, or "set k=v\n".
+static int sd_get(const char* key, char* buf, int cap){
+  savedata::Reset();
+  FILE* fp = fopen("/savedata/con0", "r+");
+  if (!fp) return -1;
+  char cmd[48];
+  const int m = snprintf(cmd, sizeof(cmd), "get %s\n", key);
+  fwrite(cmd, 1, m, fp); fflush(fp);
+  int n = fread(buf, 1, cap - 1, fp);
+  if (n < 0) n = 0;
+  buf[n] = 0;
+  fclose(fp);
+  return n;
+}
+static void sd_set(const char* key, const char* val){
+  savedata::Reset();
+  FILE* fp = fopen("/savedata/con0", "r+");
+  if (!fp) return;
+  char cmd[48];
+  const int m = snprintf(cmd, sizeof(cmd), "set %s=%s\n", key, val);
+  fwrite(cmd, 1, m, fp); fflush(fp);
+  fclose(fp);
+}
 
 using namespace pico8;
 
@@ -232,6 +262,7 @@ class PixArt : public Pico8 {
   int  netOp = 0;                  // 0 = save, 1 = load
   int  msgTtl = 0;                 // frames left to show netMsg
   const char* netMsg = "";         // last result banner ("SAVED" / "LOADED" / ...)
+  char slotKey[17] = "";           // this device's cloud slot key (16 alnum + NUL)
 
   // push a copy of `src` onto a snapshot stack, dropping the oldest when full
   static void push(uint8_t* base, int& cnt, const uint8_t* src){
@@ -335,19 +366,44 @@ class PixArt : public Pico8 {
   // Encode the canvas to an indexed PNG, base64url it, and push it to the global
   // cloud slot. Blocking (cloudsave::Set does the HTTP round-trips internally).
   // The two scratch buffers are static (~16.6KB + ~22KB) to stay off the stack.
+  // Generate a fresh 16-char alnum cloud key. rnd() is already seeded from the
+  // host real-time clock at startup (pico8 _reset), and we fold the clock in
+  // again, so two fresh devices starting at different times never collide.
+  void genKey(char out[17]){
+    static const char AB[] =
+      "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"; // 62
+    srand(rndu() ^ (u32)B8_INF_CAL_L ^ ((u32)B8_INF_CAL_H << 1));
+    for (int i = 0; i < 16; ++i) out[i] = AB[rndu() % 62];
+    out[16] = 0;
+  }
+  // Resolve this device's cloud key from savedata, generating + persisting one
+  // on first run. Always yields a valid cloudsave key (^[0-9A-Za-z]{16}$).
+  void ensureSlotKey(){
+    char buf[24] = {0};
+    const int n = sd_get(kSlotField, buf, sizeof(buf));
+    bool valid = (n == 16);
+    for (int i = 0; i < n && valid; ++i){
+      const char c = buf[i];
+      valid = (c>='0'&&c<='9') || (c>='a'&&c<='z') || (c>='A'&&c<='Z');
+    }
+    if (valid){ memcpy(slotKey, buf, 16); slotKey[16] = 0; return; }
+    genKey(slotKey);
+    sd_set(kSlotField, slotKey);
+  }
+
   bool doSave(){
     const int n = png::EncodeIndexed(&canvas[0][0], CANVAS, CANVAS,
                                      png::kPico8Palette, 16, g_png, sizeof(g_png));
     if (n <= 0) return false;
     const int m = base64::encode(g_png, n, g_b64, sizeof(g_b64));
     if (m <= 0) return false;
-    return cloudsave::Set(kSaveKey, g_b64, m);
+    return cloudsave::Set(slotKey, g_b64, m);
   }
 
   // Fetch the cloud slot, decode the PNG, and replace the canvas. Blocking.
   // Returns 1 on success, 0 if the slot is empty, -1 on transport/decode error.
   int doLoad(){
-    const int m = cloudsave::Get(kSaveKey, g_b64, sizeof(g_b64));
+    const int m = cloudsave::Get(slotKey, g_b64, sizeof(g_b64));
     if (m == 0) return 0;                     // slot never set
     if (m <  0) return -1;                     // bad key / transport error
     const int n = base64::decode(g_b64, m, g_png, sizeof(g_png));
@@ -413,6 +469,7 @@ class PixArt : public Pico8 {
     hasClip = false;
     mirror = 0;
     vx = vy = 0;                   // start on the top-left tile (0,0)-(15,15)
+    ensureSlotKey();               // resolve/create this device's cloud slot key
   }
 
   void _update() override {
