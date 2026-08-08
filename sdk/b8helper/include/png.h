@@ -59,20 +59,27 @@ namespace png {
                     const uint8_t* palette, int palette_count,
                     uint8_t* out, int out_cap);
 
-  // Decode an indexed PNG (as produced by EncodeIndexed) back into palette
-  // indices. Handles color type 3, 8-bit, all five PNG row filters, and a
-  // single stored-deflate IDAT -- i.e. exactly what EncodeIndexed emits (the
-  // encoder writes filter 0 only, but the decoder accepts 0..4). Chunk CRC-32
-  // and the zlib Adler-32 are verified. Compressed (huffman) deflate and
-  // multi-IDAT streams are *not* supported.
-  //   png, png_len : the PNG byte stream.
-  //   idx, idx_cap : output buffer, receives w*h row-major index bytes.
-  //   w_out, h_out : receive the decoded dimensions (either may be null).
+  // Decode an indexed (color type 3) PNG back into palette indices. Handles
+  // bit depths 1/2/4/8, all five PNG row filters, a full DEFLATE stream
+  // (stored, fixed- and dynamic-Huffman blocks) split over one or more IDAT
+  // chunks -- i.e. what EncodeIndexed emits *and* what general tools (Pillow,
+  // browsers) emit for indexed PNGs. Interlacing is not supported. Chunk
+  // CRC-32 and the zlib Adler-32 are verified. The PLTE palette is not read:
+  // the raw stored indices are returned as-is, so a caller wanting PICO-8
+  // colors must ensure the source palette already matches (palette remapping /
+  // quantization of arbitrary art belongs upstream, e.g. the browser).
+  //   png, png_len       : the PNG byte stream.
+  //   idx, idx_cap       : output buffer, receives w*h row-major index bytes.
+  //   w_out, h_out       : receive the decoded dimensions (either may be null).
+  //   scratch, scratch_cap : work buffer for the inflated (still-filtered)
+  //     image; must be >= h * (1 + ceil(w*bitdepth/8)) bytes. For a <=128x128
+  //     8-bit image, 128*129 = 16512 bytes suffice.
   // Returns the number of index bytes written (w*h, > 0), or 0 on malformed
-  // input, an unsupported feature, a CRC/Adler mismatch, or idx_cap too small.
+  // input, an unsupported feature, a CRC/Adler mismatch, or a buffer too small.
   // Does not allocate.
   int DecodeIndexed(const uint8_t* png, int png_len,
                     uint8_t* idx, int idx_cap,
-                    int* w_out, int* h_out);
+                    int* w_out, int* h_out,
+                    uint8_t* scratch, int scratch_cap);
 
 }

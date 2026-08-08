@@ -48,10 +48,13 @@
 static const char kSlotField[] = "pixslot";
 
 // Shared save/load scratch, used one operation at a time and kept off the stack
-// (~16.6KB PNG + ~22KB base64 + 16KB decode temp). 128 == CANVAS below.
+// (~16.6KB PNG + ~22KB base64 + 16KB decoded indices + ~16.5KB inflate scratch).
+// 128 == CANVAS below; g_raw holds the inflated, still-filtered image, so it is
+// h*(1+w) = 128*129 bytes.
 static uint8_t g_png[PNG_ENCODE_CAP(128, 128)];
 static char    g_b64[B64_CAP(PNG_ENCODE_CAP(128, 128))];
 static uint8_t g_tmp[128 * 128];
+static uint8_t g_raw[128 * 129];
 
 // --- browser-local savedata helpers (per-ROM localStorage over SCI) ----------
 // One command per open: "get <key>\n" -> value bytes then EOF, or "set k=v\n".
@@ -421,7 +424,8 @@ class PixArt : public Pico8 {
     const int n = base64::decode(g_b64, m, g_png, sizeof(g_png));
     if (n <= 0) return -1;
     int w = 0, h = 0;
-    const int px = png::DecodeIndexed(g_png, n, g_tmp, sizeof(g_tmp), &w, &h);
+    const int px = png::DecodeIndexed(g_png, n, g_tmp, sizeof(g_tmp), &w, &h,
+                                      g_raw, sizeof(g_raw));
     if (px <= 0 || w != CANVAS || h != CANVAS) return -1;
     beginStroke();                             // make the load undoable
     memcpy(canvas, g_tmp, SZ);
