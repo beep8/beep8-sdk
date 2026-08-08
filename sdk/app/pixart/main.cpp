@@ -56,6 +56,11 @@ static uint8_t g_png[PNG_ENCODE_CAP(128, 128)];
 static char    g_b64[B64_CAP(PNG_ENCODE_CAP(128, 128))];
 static uint8_t g_tmp[128 * 128];
 static uint8_t g_raw[128 * 129];
+// Imported PNGs come from arbitrary tools, so they can be far larger than our own
+// stored-deflate output (g_png): extra chunks, different filters, truecolor. Give
+// import its own roomy receive buffer; oversize files past this are rejected
+// cleanly (not decoded) rather than corrupting the canvas.
+static uint8_t g_imp[64 * 1024];
 
 // --- browser-local savedata helpers (per-ROM localStorage over SCI) ----------
 // One command per open: "get <key>\n" -> value bytes then EOF, or "set k=v\n".
@@ -498,12 +503,12 @@ class PixArt : public Pico8 {
   // a cleared canvas (undoable). Returns 1 ok, -2 too big (>128), -1 on failure.
   int doImport(int n){
     int w = 0, h = 0;
-    const int px = png::DecodeIndexed(g_png, n, g_tmp, sizeof(g_tmp), &w, &h,
+    const int px = png::DecodeIndexed(g_imp, n, g_tmp, sizeof(g_tmp), &w, &h,
                                       g_raw, sizeof(g_raw));
     if (px <= 0) return -1;
     if (w > CANVAS || h > CANVAS) return -2;
     static uint8_t pal[256 * 3];
-    const int pc = png::GetPalette(g_png, n, pal, sizeof(pal));
+    const int pc = png::GetPalette(g_imp, n, pal, sizeof(pal));
     if (pc <= 0) return -1;
     uint8_t lut[256];
     for (int i = 0; i < pc;  ++i) lut[i] = nearestPico8(pal[i*3], pal[i*3+1], pal[i*3+2]);
@@ -603,7 +608,7 @@ class PixArt : public Pico8 {
     // reply across frames; when the whole file has arrived, decode + remap it.
     if (impPhase == 1) {
       int n = 0;
-      const upload::State st = upload::Poll(g_png, sizeof(g_png), &n);
+      const upload::State st = upload::Poll(g_imp, sizeof(g_imp), &n);
       if (st == upload::DONE) {
         const int r = doImport(n);
         netMsg = (r == 1) ? "IMPORTED" : (r == -2) ? "TOO BIG (<=128)" : "IMPORT FAILED";

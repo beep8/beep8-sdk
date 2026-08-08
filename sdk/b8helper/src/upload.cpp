@@ -11,12 +11,15 @@
 
 #define SCI_CH_UP (11)          // free SCI channel (0/1/2 vterm/savedata/http,
                                 //                   12/13 download/clip)
+#define UP_STALL_FRAMES (600)   // ~10s @60fps: bail if a started transfer stalls
 namespace {
   int  st_state  = upload::IDLE;
   int  st_need   = -1;          // payload length (-1 = still reading header)
   int  st_got    = 0;           // payload bytes received
   int  st_hval   = 0;           // running value of the "<len>" header
   bool st_discard = false;      // payload too big for the caller buffer
+  bool st_started = false;      // at least one byte has arrived
+  int  st_idle    = 0;          // consecutive Poll()s with no new bytes
 }
 
 namespace upload {
@@ -26,11 +29,14 @@ void Begin() {
   static const char cmd[] = "open\n";
   for (int i = 0; cmd[i]; ++i) B8_FIFO_SCI_TX(SCI_CH_UP) = (u32)(u8)cmd[i];
   st_state = WAITING; st_need = -1; st_got = 0; st_hval = 0; st_discard = false;
+  st_started = false; st_idle = 0;
 }
 
 State Poll(unsigned char* buf, int cap, int* out_len) {
   if (st_state != WAITING) return (State)st_state;
+  bool progressed = false;
   while (B8_FIFO_SCI_RX_LEN(SCI_CH_UP) > 0) {
+    progressed = true; st_started = true;
     const u8 b = (u8)B8_FIFO_SCI_RX(SCI_CH_UP);
     if (st_need < 0) {                                 // reading "<len>\n"
       if (b == '\n') {
@@ -51,6 +57,12 @@ State Poll(unsigned char* buf, int cap, int* out_len) {
         return (State)st_state;
       }
     }
+  }
+  // Once bytes have started flowing, a long silence means the host stopped mid
+  // transfer (backgrounded tab, lost data). Give up rather than spin forever.
+  if (st_started) {
+    if (progressed) st_idle = 0;
+    else if (++st_idle > UP_STALL_FRAMES) { st_state = ERROR; return (State)st_state; }
   }
   return WAITING;
 }
