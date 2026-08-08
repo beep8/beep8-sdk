@@ -82,4 +82,10 @@ namespace png {
                     int* w_out, int* h_out,
                     uint8_t* scratch, int scratch_cap);
 
+  // Copy the PLTE palette (RGB triples) of an indexed PNG into pal_out, up to
+  // pal_cap bytes. Returns the number of palette entries copied (0 if no PLTE
+  // or bad input). Pair with DecodeIndexed to map the raw indices onto another
+  // palette (e.g. snap each PLTE color to the nearest PICO-8 color on import).
+  int GetPalette(const uint8_t* png, int png_len, uint8_t* pal_out, int pal_cap);
+
 }

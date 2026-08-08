@@ -478,4 +478,25 @@ int DecodeIndexed(const uint8_t* png, int png_len,
   return w * h;
 }
 
+int GetPalette(const uint8_t* png, int png_len, uint8_t* pal_out, int pal_cap) {
+  if (!png || !pal_out || png_len < 8) return 0;
+  int p = 8;
+  while (p + 12 <= png_len) {
+    const uint32_t clen = rd_be32(png + p);
+    if (clen > (uint32_t)(png_len - p - 12)) return 0;
+    const uint8_t* type = png + p + 4;
+    const uint8_t* data = png + p + 8;
+    if (type_is(type, "PLTE")) {
+      int n = (int)clen;
+      if (n > pal_cap) n = pal_cap;
+      n -= n % 3;                                     // whole RGB triples only
+      for (int i = 0; i < n; ++i) pal_out[i] = data[i];
+      return n / 3;                                   // number of entries
+    }
+    if (type_is(type, "IEND")) break;
+    p += 12 + (int)clen;
+  }
+  return 0;
+}
+
 } // namespace png

@@ -33,6 +33,7 @@
 #include <cloudsave.h>
 #include <savedata.h>
 #include <download.h>
+#include <upload.h>
 
 // base64url-encoded length (incl. NUL) for n input bytes -- a compile-time
 // constant so the save scratch buffer can be a fixed static array.
@@ -102,19 +103,22 @@ static constexpr int BARB_Y   = BARA_Y + 20;  // toolbar row B
 static constexpr int ICON    = 16;            // icon / button size
 static constexpr int PITCH   = 21;            // toolbar button pitch
 static constexpr int BARC_Y  = BARB_Y + 20;  // toolbar row C (below row B)
+static constexpr int BARD_Y  = BARC_Y + 20;  // toolbar row D (import; below row C)
 
 static constexpr int UNDO_MAX = 4;            // undo / redo depth
 static constexpr int FX_FRAMES = 8;           // copy/paste "pressed" nudge duration
 static constexpr int SZ = CANVAS * CANVAS;    // bytes per canvas snapshot
 static constexpr int DL_CHUNK = 4000;         // local-download bytes per frame (< 8KB SCI FIFO)
 
-// toolbar button ids. Screen positions come from btnPos(); the three rows are:
+// toolbar button ids. Screen positions come from btnPos(); the four rows are:
 //   A: [Pen Hand Eye Fill] (left) ...  [Undo Redo]     (right, edge-aligned)
 //   B: [Copy Paste Cut]   (left)  ...  [View Grid Help] (right, edge-aligned)
 //   C: [FlipH FlipV Mirror] (left) ...  [DL Load Save]   (right, edge-aligned)
+//   D:                          ...  [Import]          (under DL: local file in)
 enum Btn { B_PEN = 0, B_HAND, B_EYE, B_UNDO, B_REDO,
            B_VIEW, B_GRID, B_CUT, B_COPY, B_PASTE, B_HELP,
-           B_FLIPH, B_FLIPV, B_MIRROR, B_FILL, B_SAVE, B_LOAD, B_DL, B_N };
+           B_FLIPH, B_FLIPV, B_MIRROR, B_FILL, B_SAVE, B_LOAD, B_DL,
+           B_IMPORT, B_N };
 
 static inline int clampi(int v, int lo, int hi){
   return v < lo ? lo : (v > hi ? hi : v);
@@ -144,6 +148,7 @@ static void btnPos(int id, int& x, int& y){
     case B_DL:    x = SCRW - ICON - 2*PITCH; y = BARC_Y; break;
     case B_LOAD:  x = SCRW - ICON - PITCH;   y = BARC_Y; break;
     case B_SAVE:  x = SCRW - ICON;           y = BARC_Y; break;
+    case B_IMPORT:x = SCRW - ICON - 2*PITCH; y = BARD_Y; break;  // under DL
     default:      x = 0;                     y = 0;      break;
   }
 }
@@ -243,6 +248,12 @@ static const uint16_t kIcon[B_N][16] = {
     0b0011111111111100,0b0001111111111000,0b0000111111110000,0b0000011111100000,
     0b0000001111000000,0b0000000110000000,0b0000000000000000,0b0110000000000110,
     0b0110000000000110,0b0110000000000110,0b0111111111111110,0b0000000000000000 },
+  { // B_IMPORT : arrow rising OUT of an open basket (inverse of B_DL) --
+    // "load a local file into the editor".
+    0b0000000000000000,0b0000000110000000,0b0000001111000000,0b0000011111100000,
+    0b0000111111110000,0b0001111111111000,0b0011111111111100,0b0000001111000000,
+    0b0000001111000000,0b0000001111000000,0b0000000000000000,0b0110000000000110,
+    0b0110000000000110,0b0110000000000110,0b0111111111111110,0b0000000000000000 },
 };
 
 // U/D mirror icon: the B_MIRROR bitmap rotated 90 degrees (trapezoids facing a
@@ -278,6 +289,7 @@ class PixArt : public Pico8 {
   char slotKey[17] = "";           // this device's cloud slot key (16 alnum + NUL)
   int  dlPhase = 0;                // 0 idle, 1 streaming a local-download PNG
   int  dlOff = 0, dlLen = 0;       // bytes of the PNG (in g_png) sent / total
+  int  impPhase = 0;              // 0 idle, 1 awaiting a local-file import (upload)
 
   // push a copy of `src` onto a snapshot stack, dropping the oldest when full
   static void push(uint8_t* base, int& cnt, const uint8_t* src){
@@ -437,7 +449,7 @@ class PixArt : public Pico8 {
   // pumpDownload() emits the "<len>\n" header then one <=DL_CHUNK chunk per
   // frame until the whole PNG is sent (host vdownload.js then offers the file).
   void startDownload(){
-    if (dlPhase != 0 || netPhase != 0) return;
+    if (dlPhase != 0 || netPhase != 0 || impPhase != 0) return;
     const int n = png::EncodeIndexed(&canvas[0][0], CANVAS, CANVAS,
                                      png::kPico8Palette, 16, g_png, sizeof(g_png));
     if (n <= 0) { netMsg = "DL FAILED"; msgTtl = 90; return; }
@@ -465,6 +477,44 @@ class PixArt : public Pico8 {
       dlPhase = 0;
       netMsg = "DOWNLOADED"; msgTtl = 90;
     }
+  }
+
+  // Nearest PICO-8 color to an arbitrary RGB (squared-distance), used to snap an
+  // imported PNG's palette onto our fixed 16 colors.
+  static uint8_t nearestPico8(int r, int g, int b){
+    int best = 0, bestd = 1 << 30;
+    for (int i = 0; i < 16; ++i){
+      const int dr = r - png::kPico8Palette[i*3];
+      const int dg = g - png::kPico8Palette[i*3+1];
+      const int db = b - png::kPico8Palette[i*3+2];
+      const int d  = dr*dr + dg*dg + db*db;
+      if (d < bestd){ bestd = d; best = i; }
+    }
+    return (uint8_t)best;
+  }
+
+  // Import a local PNG (already in g_png, n bytes) into the canvas: decode the
+  // indices, snap its PLTE to the nearest PICO-8 colors, and blit it centered on
+  // a cleared canvas (undoable). Returns 1 ok, -2 too big (>128), -1 on failure.
+  int doImport(int n){
+    int w = 0, h = 0;
+    const int px = png::DecodeIndexed(g_png, n, g_tmp, sizeof(g_tmp), &w, &h,
+                                      g_raw, sizeof(g_raw));
+    if (px <= 0) return -1;
+    if (w > CANVAS || h > CANVAS) return -2;
+    static uint8_t pal[256 * 3];
+    const int pc = png::GetPalette(g_png, n, pal, sizeof(pal));
+    if (pc <= 0) return -1;
+    uint8_t lut[256];
+    for (int i = 0; i < pc;  ++i) lut[i] = nearestPico8(pal[i*3], pal[i*3+1], pal[i*3+2]);
+    for (int i = pc; i < 256; ++i) lut[i] = 0;
+    beginStroke();                             // make the import undoable
+    memset(canvas, 0, sizeof(canvas));
+    const int ox = (CANVAS - w) / 2, oy = (CANVAS - h) / 2;
+    for (int y = 0; y < h; ++y)
+      for (int x = 0; x < w; ++x)
+        canvas[oy + y][ox + x] = lut[ g_tmp[y * w + x] ];
+    return 1;
   }
 
   // Aseprite-compatible keyboard shortcuts (keys come from the HIF keyboard
@@ -509,9 +559,12 @@ class PixArt : public Pico8 {
       case B_FLIPH: fireFlipH(); break;               // flips = both modes
       case B_FLIPV: fireFlipV(); break;
       case B_MIRROR: mirror = (mirror + 1) % 3; break; // cycle off -> L/R -> U/D
-      case B_SAVE:  if (netPhase == 0 && dlPhase == 0) { netOp = 0; netPhase = 1; } break;
-      case B_LOAD:  if (netPhase == 0 && dlPhase == 0) { netOp = 1; netPhase = 1; } break;
+      case B_SAVE:  if (netPhase == 0 && dlPhase == 0 && impPhase == 0) { netOp = 0; netPhase = 1; } break;
+      case B_LOAD:  if (netPhase == 0 && dlPhase == 0 && impPhase == 0) { netOp = 1; netPhase = 1; } break;
       case B_DL:    startDownload(); break;   // stream the PNG to a local file
+      case B_IMPORT:                          // pull a local PNG file into the canvas
+        if (netPhase == 0 && dlPhase == 0 && impPhase == 0) { upload::Begin(); impPhase = 1; }
+        break;
     }
   }
 
@@ -545,6 +598,22 @@ class PixArt : public Pico8 {
       netPhase = 0;
     }
     pumpDownload();     // stream a pending local download, one chunk per frame
+
+    // Local PNG import: after B_IMPORT arms upload::Begin(), drain the host's
+    // reply across frames; when the whole file has arrived, decode + remap it.
+    if (impPhase == 1) {
+      int n = 0;
+      const upload::State st = upload::Poll(g_png, sizeof(g_png), &n);
+      if (st == upload::DONE) {
+        const int r = doImport(n);
+        netMsg = (r == 1) ? "IMPORTED" : (r == -2) ? "TOO BIG (<=128)" : "IMPORT FAILED";
+        msgTtl = 90; impPhase = 0;
+      } else if (st == upload::CANCELLED) {
+        netMsg = "CANCELLED"; msgTtl = 90; impPhase = 0;
+      } else if (st == upload::ERROR) {
+        netMsg = "IMPORT FAILED"; msgTtl = 90; impPhase = 0;
+      }
+    }
 
     const b8HifMouseStatus* ms = b8HifGetMouseStatus();
     const int  mx    = ms->mouse_x >> 4;   // fixed-point (/16) -> pixels
@@ -716,8 +785,8 @@ class PixArt : public Pico8 {
         case B_HELP:  break;                          // always available
         case B_FLIPH: case B_FLIPV: break;            // available in both modes
         case B_MIRROR: if (mirror == 0) fg = LIGHT_GREY; break;  // off = grey, on = black
-        case B_SAVE: case B_LOAD: case B_DL:
-          if (netPhase != 0 || dlPhase != 0) fg = LIGHT_GREY; break;  // grey while a net/download op runs
+        case B_SAVE: case B_LOAD: case B_DL: case B_IMPORT:
+          if (netPhase != 0 || dlPhase != 0 || impPhase != 0) fg = LIGHT_GREY; break;  // grey while a net/download/import op runs
       }
       int bx, by; btnPos(id, bx, by);
       const bool pressed = (fxTtl > 0 && fxId == id);   // cut/copy/paste tap flash
@@ -732,9 +801,10 @@ class PixArt : public Pico8 {
 
     // net status banner, drawn on top of the edit area: "SAVING..."/"LOADING..."
     // while the blocking op is pending, then the result for msgTtl frames.
-    if (netPhase != 0 || dlPhase != 0 || msgTtl > 0) {
+    if (netPhase != 0 || dlPhase != 0 || impPhase != 0 || msgTtl > 0) {
       const char* t = (netPhase != 0) ? (netOp == 0 ? "SAVING..." : "LOADING...")
                     : (dlPhase  != 0) ? "DOWNLOAD..."
+                    : (impPhase != 0) ? "IMPORT..."
                     : netMsg;
       rectfill(0, 54, SCRW, 74, BLACK);
       rect(0, 54, SCRW - 1, 73, WHITE);
