@@ -7,7 +7,8 @@
 //               the viewport box (snapped to 16px tiles). Return with View btn.
 // Toolbar (three rows): row A = Pen / Hand / Eyedropper / Fill / Undo / Redo;
 //   row B = Copy / Paste / Cut / View / Grid / Help;
-//   row C = Flip-H / Flip-V / Mirror ... Download / Load / Save (right-aligned).
+//   row C = Flip-H / Flip-V / Mirror ... plus, right-aligned across rows C and D,
+//   a boxed 2x2 transfer block: [Save Load] over [Download Import].
 // Undo/Redo keep up to UNDO_MAX steps. Cut/Copy/Paste act on the current 16x16
 // viewport tile in OVERVIEW mode; the two flips mirror it in either mode (the
 // visible slice in PIXEL, the white box in OVERVIEW). Mirror is a persistent
@@ -18,11 +19,14 @@
 // NOTE: pico8 rectfill()/rect() take x1/y1 as EXCLUSIVE (right/bottom edge not
 // drawn), so fills use +size and a 1px-wide line is (a, a+1).
 //
-// Save / Load (row C, right) sync the canvas with this device's private cloud
+// The transfer block's top row is the cloud (Save / Load), its bottom row the
+// local device (Download / Import) -- the icons mirror that split, cloud glyph
+// vs tray glyph, with the arrow pointing into the glyph to store and out of it
+// to retrieve. Save / Load sync the canvas with this device's private cloud
 // slot: Save encodes to an indexed PNG (png::EncodeIndexed -> base64url ->
 // cloudsave::Set), Load reverses it (cloudsave::Get -> base64 ->
 // png::DecodeIndexed) and is undoable. The slot key is per-device (see
-// kSlotField). Download (row C) saves the PNG to the user's device as a local
+// kSlotField). Download saves the PNG to the user's device as a local
 // file over the SCI /download driver, streamed a chunk per frame to stay under
 // the 8KB FIFO. Not yet wired: share-to-the-CC0-asset-commons.
 #include <pico8.h>
@@ -118,8 +122,11 @@ static constexpr int DL_CHUNK = 4000;         // local-download bytes per frame 
 // toolbar button ids. Screen positions come from btnPos(); the four rows are:
 //   A: [Pen Hand Eye Fill] (left) ...  [Undo Redo]     (right, edge-aligned)
 //   B: [Copy Paste Cut]   (left)  ...  [View Grid Help] (right, edge-aligned)
-//   C: [FlipH FlipV Mirror] (left) ...  [DL Load Save]   (right, edge-aligned)
-//   D:                          ...  [Import]          (under DL: local file in)
+//   C: [FlipH FlipV Mirror] (left) ...  [Save Load]     (right, edge-aligned)
+//   D:                          ...      [DL  Import]   (right, edge-aligned)
+// Rows C/D right form one 2x2 transfer block, boxed together on screen:
+// row C is the cloud slot, row D is a local file; the left column stores (out),
+// the right column retrieves (in). The icons encode the same two axes.
 enum Btn { B_PEN = 0, B_HAND, B_EYE, B_UNDO, B_REDO,
            B_VIEW, B_GRID, B_CUT, B_COPY, B_PASTE, B_HELP,
            B_FLIPH, B_FLIPV, B_MIRROR, B_FILL, B_SAVE, B_LOAD, B_DL,
@@ -150,10 +157,11 @@ static void btnPos(int id, int& x, int& y){
     case B_FLIPH: x = 0 * PITCH;             y = BARC_Y; break;
     case B_FLIPV: x = 1 * PITCH;             y = BARC_Y; break;
     case B_MIRROR:x = 2 * PITCH;             y = BARC_Y; break;
-    case B_DL:    x = SCRW - ICON - 2*PITCH; y = BARC_Y; break;
-    case B_LOAD:  x = SCRW - ICON - PITCH;   y = BARC_Y; break;
-    case B_SAVE:  x = SCRW - ICON;           y = BARC_Y; break;
-    case B_IMPORT:x = SCRW - ICON - 2*PITCH; y = BARD_Y; break;  // under DL
+    // transfer block: [Save Load] over [DL Import], right-aligned (see enum Btn)
+    case B_SAVE:  x = SCRW - ICON - PITCH;   y = BARC_Y; break;
+    case B_LOAD:  x = SCRW - ICON;           y = BARC_Y; break;
+    case B_DL:    x = SCRW - ICON - PITCH;   y = BARD_Y; break;
+    case B_IMPORT:x = SCRW - ICON;           y = BARD_Y; break;
     default:      x = 0;                     y = 0;      break;
   }
 }
@@ -237,28 +245,35 @@ static const uint16_t kIcon[B_N][16] = {
     0b0000011111100000,0b0000111111110000,0b0001111111111000,0b0001111111111000,
     0b0000111111111100,0b0000011111101110,0b0000001111000110,0b0000000110000100,
     0b0000000000000000,0b0000000000000000,0b0000000000000000,0b0000000000000000 },
-  { // B_SAVE : floppy disk (metal shutter with hole up top, lined label below)
-    0b0000000000000000,0b0111111111111110,0b0100001111000010,0b0100001001000010,
-    0b0100001001000010,0b0100001111000010,0b0100000000000010,0b0111111111111110,
-    0b0100000000000010,0b0101111111110010,0b0101000000010010,0b0101111111110010,
-    0b0101000000010010,0b0101111111110010,0b0111111111111110,0b0000000000000000 },
-  { // B_LOAD : download arrow (shaft + wide head) dropping onto a tray line
-    0b0000000000000000,0b0000001111000000,0b0000001111000000,0b0000001111000000,
-    0b0000001111000000,0b0000001111000000,0b0000001111000000,0b0011111111111100,
-    0b0001111111111000,0b0000111111110000,0b0000011111100000,0b0000001111000000,
-    0b0000000110000000,0b0000000000000000,0b0111111111111110,0b0000000000000000 },
-  { // B_DL : download-to-device -- arrow dropping into an open basket (walls),
-    // distinct from B_LOAD's flat baseline (this one is "save to a file").
-    0b0000000000000000,0b0000001111000000,0b0000001111000000,0b0000001111000000,
-    0b0011111111111100,0b0001111111111000,0b0000111111110000,0b0000011111100000,
-    0b0000001111000000,0b0000000110000000,0b0000000000000000,0b0110000000000110,
-    0b0110000000000110,0b0110000000000110,0b0111111111111110,0b0000000000000000 },
-  { // B_IMPORT : arrow rising OUT of an open basket (inverse of B_DL) --
-    // "load a local file into the editor".
-    0b0000000000000000,0b0000000110000000,0b0000001111000000,0b0000011111100000,
-    0b0000111111110000,0b0001111111111000,0b0011111111111100,0b0000001111000000,
-    0b0000001111000000,0b0000001111000000,0b0000000000000000,0b0110000000000110,
-    0b0110000000000110,0b0110000000000110,0b0111111111111110,0b0000000000000000 },
+  // The four transfer buttons form a 2x2 block (see btnPos): the *glyph* says
+  // where the data goes (cloud on top = this device's cloud slot, tray at the
+  // bottom = a file on this device) and the *arrow* points at that glyph for
+  // "put" and away from it for "get". So cloud+up = save, cloud+down = load,
+  // tray+down = download, tray+up = import -- no two of them share a silhouette.
+  { // B_SAVE : cloud with an arrow rising INTO it (store to the cloud slot)
+    0b0000011100000000,0b0001111111011000,0b0011111111111100,0b0111111111111110,
+    0b0111111111111110,0b0111111111111110,0b0000000000000000,0b0000000110000000,
+    0b0000001111000000,0b0000011111100000,0b0000111111110000,0b0001111111111000,
+    0b0000001111000000,0b0000001111000000,0b0000000000000000,0b0000000000000000 },
+  { // B_LOAD : cloud with an arrow dropping OUT of it (fetch the cloud slot)
+    0b0000011100000000,0b0001111111011000,0b0011111111111100,0b0111111111111110,
+    0b0111111111111110,0b0111111111111110,0b0000000000000000,0b0000001111000000,
+    0b0000001111000000,0b0001111111111000,0b0000111111110000,0b0000011111100000,
+    0b0000001111000000,0b0000000110000000,0b0000000000000000,0b0000000000000000 },
+  // The two device-side buttons additionally carry a 3x5 word ("DL" / "UP") on
+  // rows 0-4, which costs the arrow its shaft: rows 6-10 hold a bare triangle
+  // and rows 11-13 the tray. Row 14-15 stay blank so the transfer block's grey
+  // box (bottom edge on SCRH-1, i.e. row 15 of these buttons) clears the glyph.
+  { // B_DL : "DL" over a triangle dropping INTO an open tray (PNG -> this device)
+    0b0000011001000000,0b0000010101000000,0b0000010101000000,0b0000010101000000,
+    0b0000011001110000,0b0000000000000000,0b0001111111111000,0b0000111111110000,
+    0b0000011111100000,0b0000001111000000,0b0000000110000000,0b0110000000000110,
+    0b0110000000000110,0b0111111111111110,0b0000000000000000,0b0000000000000000 },
+  { // B_IMPORT : "UP" over a triangle rising OUT of the tray (local PNG -> editor)
+    0b0000010101100000,0b0000010101010000,0b0000010101100000,0b0000010101000000,
+    0b0000011101000000,0b0000000000000000,0b0000000110000000,0b0000001111000000,
+    0b0000011111100000,0b0000111111110000,0b0001111111111000,0b0110000000000110,
+    0b0110000000000110,0b0111111111111110,0b0000000000000000,0b0000000000000000 },
 };
 
 // U/D mirror icon: the B_MIRROR bitmap rotated 90 degrees (trapezoids facing a
@@ -803,6 +818,13 @@ class PixArt : public Pico8 {
     // button panels so its left edge stays visible at column 0). Top edge nudged
     // up 1px (BARA_Y-2) for a touch more breathing room above the icons.
     rect(0, BARA_Y - 2, 3 * PITCH + ICON, BARA_Y + ICON, LIGHT_GREY);
+    // light-grey box grouping the 2x2 transfer block (cloud row over file row).
+    // rect() draws its right edge ON column x1 and its bottom edge ON row y1
+    // (only rectfill treats them as exclusive), so the last on-screen column /
+    // row is SCRW-1 / SCRH-1 -- passing SCRW/SCRH would push both off screen.
+    // Both land on pixels the 16x16 glyphs leave blank, so the box never cuts
+    // into an icon.
+    rect(SCRW - ICON - PITCH - 2, BARC_Y - 2, SCRW - 1, SCRH - 1, LIGHT_GREY);
 
     // net status banner, drawn on top of the edit area: "SAVING..."/"LOADING..."
     // while the blocking op is pending, then the result for msgTtl frames.
