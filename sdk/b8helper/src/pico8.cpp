@@ -195,13 +195,10 @@ static  SprCursor _spr_cursor_prev;
 static  BgCursor  _bg_cursor_prev;
 static  FILE*     _fp_sprprint;
 static  FILE*     _fp_bgprint;
-static  FILE*     _fp_bgprint_debug = 0;
 static  BgConfig  _bg_config[ BG_MAX ];
 static  ButtonStatus  _button_status[ PLAYER_MAX ];
 static  MouseStatus   _mouse_status;
 static  shared_ptr< CHifDecoder > _hif_decoder;
-static  bool  _init_dprint;
-static  bool  _dprint_enabled;
 
 #define SPRITE_PATTERN_BANK_NUM (16)
 static  u8        _sprite_flags[ SPRITE_PATTERN_BANK_NUM ][256];
@@ -251,7 +248,6 @@ static  void  _reset(){
   }
   _hif_decoder = make_shared< CHifDecoder >(); 
   _mouse_status = MouseStatus();
-  _init_dprint = false;
 
   {
     sprprint::Reset();
@@ -266,14 +262,12 @@ static  void  _reset(){
     bgprint::Context ctx;
     ctx._scroll = false;
     _fp_bgprint = bgprint::Open(
-      bgprint::CH6,
+      bgprint::CH3,
       nullptr, 256,
       ctx
     );
     _ASSERT( _fp_bgprint , "failed bgprint::Open()" );
   }
-
-  _dprint_enabled = true;
 }
 
 void  seterr( Error error ){
@@ -355,13 +349,6 @@ void  Pico8::run(){
       epc._cmd = &_ppu_cmd;
       epc._otz = OTZ_BG_TEXT;
       bgprint::Export(_fp_bgprint, epc);
-    }
-
-    if( _init_dprint && _dprint_enabled ){
-      bgprint::ExportPpuCmd epc;
-      epc._cmd = &_ppu_cmd;
-      epc._otz = OTZ_BG_TEXT;
-      bgprint::Export(_fp_bgprint_debug, epc);
     }
 
     test_esc( _fp_sprprint );
@@ -476,10 +463,19 @@ void  pset(fx8 x0, fx8 y0, Color col ){
 }
 
 void  rect(fx8 x0, fx8 y0, fx8 x1, fx8 y1, Color color ){
-  rectfill(x0, y0, x1,   y0+1, color );
-  rectfill(x0, y1, x1+1, y1+1, color );
-  rectfill(x0, y0, x0+1, y1,   color );
-  rectfill(x1, y0, x1+1, y1,   color );
+  MUST( _during_draw , NOT_DURING_DRAWING );
+
+  // x1/y1 are exclusive, exactly like rectfill(): rect() outlines the very box
+  // that rectfill() with the same arguments would fill. Normalise first so the
+  // edges below stay correct when the corners arrive in either order.
+  if(x0 > x1) std::swap(x0, x1);
+  if(y0 > y1) std::swap(y0, y1);
+  if(x0 == x1 || y0 == y1) return;  // empty box: rectfill() would draw nothing
+
+  rectfill(x0,   y0,   x1,   y0+1, color );  // top    (row y0)
+  rectfill(x0,   y1-1, x1,   y1,   color );  // bottom (row y1-1)
+  rectfill(x0,   y0,   x0+1, y1,   color );  // left   (column x0)
+  rectfill(x1-1, y0,   x1,   y1,   color );  // right  (column x1-1)
 }
 
 void  line(fx8 x0,fx8 y0,fx8 x1,fx8 y1, Color color ){
@@ -893,28 +889,6 @@ const BgCursor& cursor(int x, int y, BgPal pal ){
   return  _bg_cursor_prev; 
 }
 
-void  dprintenable(bool enable){
-  _dprint_enabled = enable;
-}
-
-void dprint(std::string_view format, ...){
-  if( !_init_dprint ){
-    bgprint::Context ctx;
-    ctx._scroll = true;
-    _fp_bgprint_debug = bgprint::Open(
-      bgprint::CH7,
-      nullptr, 256,
-      ctx
-    );
-    _ASSERT( _fp_bgprint_debug , "failed bgprint::Open()" );
-    _init_dprint = true;
-  }
-  va_list args;
-  va_start(args, format);
-  vfprintf(_fp_bgprint_debug, format.data(), args);
-  va_end(args);
-}
-
 void print(std::string_view format, ...){
   va_list args;
   va_start(args, format);
@@ -962,7 +936,6 @@ void  mapsetup(BgTiles wtile, BgTiles htile, std::optional<BgTilesPtr> tiles , u
   MUST(index < BG_MAX, INVALID_PARAM);
   BgConfig& cfg = _bg_config[ index ];
   if( !tiles.has_value() ) {
-    // Memory allocation for tiles (will cause immediate abort on failure; no exception handling)
     cfg.tiles = std::make_shared<std::vector<b8PpuBgTile>>(wtile * htile , b8PpuBgTile{} );
   } else {
     cfg.tiles = *tiles;
@@ -1109,15 +1082,11 @@ s32 stat( int index ){
 }
 
 fx8 mousex(){
-  fx8 ret;
-  ret.set_raw_value( _mouse_status.x << 4 );
-  return ret;
+  return fx8(_mouse_status.x).asr(4);
 }
 
 fx8 mousey(){
-  fx8 ret;
-  ret.set_raw_value( _mouse_status.y << 4 );
-  return ret;
+  return  fx8(_mouse_status.y).asr(4);
 }
 
 u32 mousestatus(){
@@ -1236,5 +1205,102 @@ struct LargeStruct {
   int data[256];
   int x=100;
 };
+
+// TODO: remove tester
+class Tester{
+  public:
+    Tester(){
+      for ( int i = 0 ; i < 100 ; ++i) {
+        static  const int tbl[] = {10, 20, 30, 40, 50};
+        int val = rndt(tbl);
+        WATCH( val );
+      }
+
+      for ( int i = 0 ; i < 100 ; ++i) {
+        static  const LargeStruct tbl[] ={
+          LargeStruct{.x=1},
+          LargeStruct{.x=2},
+          LargeStruct{.x=3}
+        };
+        const LargeStruct& ls = rndt(tbl);
+        WATCH( ls.x );
+      }
+
+      assert(mid(fx8(1), fx8(2), fx8(3)) == fx8(2));
+      assert(mid(fx8(3), fx8(2), fx8(1)) == fx8(2));
+      assert(mid(fx8(1), fx8(3), fx8(2)) == fx8(2));
+
+      assert(mid(fx8(2), fx8(2), fx8(3)) == fx8(2));
+      assert(mid(fx8(3), fx8(3), fx8(2)) == fx8(3));
+      assert(mid(fx8(1), fx8(2), fx8(2)) == fx8(2));
+
+      assert(mid(fx8(5), fx8(5), fx8(5)) == fx8(5));
+
+      assert(mid(fx8(-1), fx8(0), fx8(1)) == fx8(0));
+      assert(mid(fx8(-3), fx8(-2), fx8(-1)) == fx8(-2));
+      assert(mid(fx8(-1), fx8(-2), fx8(0)) == fx8(-1));
+
+      assert(mid(fx8(1.1), fx8(2.2), fx8(3.3)) == fx8(2.2));
+      assert(mid(fx8(3.3), fx8(1.1), fx8(2.2)) == fx8(2.2));
+
+      assert(sgn(fx8(5)) == fx8(1));
+      assert(sgn(fx8(0.5)) == fx8(1));
+
+      assert(sgn(fx8(0)) == fx8(1));
+
+      assert(sgn(fx8(-3)) == fx8(-1));
+      assert(sgn(fx8(-0.7)) == fx8(-1));
+
+      assert(sqrt(fx8(4)) == fx8(2));
+      assert(sqrt(fx8(9)) == fx8(3));
+      assert(sqrt(fx8(2.25)) == fx8(1.50));
+
+      assert(sqrt(fx8(0)) == fx8(0));
+
+      assert(sqrt(fx8(-1)) == fx8(0));
+      assert(sqrt(fx8(-2.25)) == fx8(0));
+
+      assert(cel(fx8(2.1)) == fx8(3));
+      assert(cel(fx8(2.9)) == fx8(3));
+      assert(cel(fx8(0.5)) == fx8(1));
+
+      assert(cel(fx8(-2.1)) == fx8(-2));
+      assert(cel(fx8(-2.9)) == fx8(-2));
+      assert(cel(fx8(-0.5)) == fx8(0));
+
+      assert(cel(fx8(3)) == fx8(3));
+      assert(cel(fx8(-4)) == fx8(-4));
+      assert(cel(fx8(0)) == fx8(0));
+
+      srand(42);
+
+      fx8 max_val = fx8(10);
+      for (int i = 0; i < 100; ++i) {
+          fx8 result = rndi(max_val);
+          assert(result >= fx8(0));
+          assert(result < max_val);
+      }
+
+      fx8 min_val = fx8(1.5);
+      max_val = fx8(5.75);
+      for (int i = 0; i < 100; ++i) {
+          fx8 result = rndf(min_val, max_val);
+          assert(result >= min_val);
+          assert(result <= max_val);
+      }
+
+      srand(42);
+      fx8 result1 = rndi(max_val);
+      fx8 result2 = rndi(max_val);
+
+      srand(42);
+      fx8 expected1 = rndi(max_val);
+      fx8 expected2 = rndi(max_val);
+
+      assert(result1 == expected1);
+      assert(result2 == expected2);
+    }
+};
+//static  Tester  _tester;
 
 } // namespace pico8

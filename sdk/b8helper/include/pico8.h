@@ -33,10 +33,85 @@
 #include <optional> 
 
 /*
-  TODO: Comparison table with original PICO-8
-  TODO: Standardize naming with tget / tset
-  TODO: Implement sset(x, y, [col]) -- Sets the color of a pixel on the sprite sheet
+
+TODO: PICO8 本家との比較表
+
+TODO: tget / tset で揃える
+
+start() -- 開始
+
+OK: abs(x) -- xの絶対値
+OK: atan2(dx, dy) -- (dx, dy)を0から1の角度に変換する
+NONEED: c/c++ では不要 band(x, y) -- ビット単位の論理積
+NONEED: c/c++ では不要 bnot(x) -- ビット単位の否定
+NONEED: c/c++ では不要 bor(x, y) -- ビット単位の論理和
+NONEED: c/c++ では不要 bxor(x, y) -- ビット単位の排他的論理和
+OK: cos(x) -- xの余弦, 1周期は0から1の範囲
+OK: sin(x) -- xの正弦, 1周期は0から1の範囲, 正負は反転している
+OK: flr(x) -- 切り捨て
+OK: NEW cel(x)
+
+OK: -flr(-x) -- 関数ではないが, 切り上げとして使える
+OK: max(x, y) -- x,yの最大値
+OK: min(x, y) -- x,yの最小値
+OK: mid(x, y, z) -- x,y,zの中間の値
+OK: sgn(x) -- 引数の符号を-1か1で返す. sgn(0)の時は1になる
+
+NONEED: shl(x, y) -- 左シフト
+NONEED: shr(x, y) -- 右シフト
+
+OK: sqrt(x) -- xの平方根
+OK: rnd(x) -- 0以上x未満の乱数
+OK: srand(x) -- 乱数のシードを設定する
+
+OK: btn
+OK: btnp
+OK: btnr
+
+OK: mousex
+OK: mousey
+OK: mousestatus
+
+OK  scursor(x, y) -- カーソル位置を設定する
+OK  sprint(str, [x, y, [col]]) -- 文字列を出力する
+
+TODO: cursor
+TODO: print
+
+OK:   sget(x, y) -- スプライトシートのピクセルの色を取得する
+TODO:  sset(x, y, [col]) -- スプライトシートのピクセルの色を設定する
+X   sspr(sx, sy, sw, sh, dx, dy, [dw, dh], [flip_x], [flip_y]) -- スプライトシートから指定範囲を描画する / 拡大縮小は非サポート
+
+OK: map(cel_x, cel_y, sx, sy, cel_w, cel_h, [layer]) -- マップを描画する. layer指定時はスプライトフラグと一致した時のみ描画される. スプライト0番は描画されない
+OK: mapdraw(cel_x, cel_y, sx, sy, cel_w, cel_h, [layer]) -- マップを描画する. 'map()'と同じ
+OK: tget(x, y) -- マップのセルの値を取得する
+OK: mset(x, y, v) -- マップのセルの値を設定する
+
+OK  camera([x, y]) -- カメラ位置を設定する
+
+OK  circ(x, y, r, [col]) -- 円を描画する
+OK  circfill(x, y, r, [col]) -- 塗りつぶされた円を描画する
+OK  line(x0, y0, x1, y1, [col]) -- 直線を描画する
+
+OK  clip([x, y, w, h]) -- 描画範囲を設定する
+OK  cls([col]) -- 画面をクリアする. col=クリア色
+OK  color(col) -- デフォルトの描画色を設定する
+
+OK  fset(n, [f], v) -- スプライトフラグの値を設定する
+OK  fget(n, [f]) -- スプライトフラグの値を取得する
+X   flip() -- バックバッファを画面に表示する(30fps)
+OK  pal(c0, c1, [p]) -- 色0を色1に置き換える. p=0: 描画パレット, p=1: 画面パレット
+X   palt(col, t) -- 指定した色の透過処理をt(ブール値)に設定する
+X   pget(x, y) -- ピクセルの色を取得する
+OK  pset(x, y, [col]) -- ピクセルの色を設定する
+OK  rect(x0, y0, x1, y1, [col]) -- 矩形を描画する
+OK  rectfill(x0, y0, x1, y1, [col]) -- 塗りつぶされた矩形を描画する
+OK  spr(n, x, y, [w, h], [flip_x], [flip_y]) -- スプライトを描画する
+
+OK  NEW setz
+OK  NEW poly
 */
+
 namespace pico8 {
 
 #define MUST(cond, errcode) \
@@ -134,9 +209,6 @@ namespace pico8 {
     BUTTON_ANY   = 0x10,
     /* --- */
     BUTTON_MAX
-    // Note: Unlike PICO-8, BEEP-8 is primarily designed for smartphone use.
-    // These buttons are only functional on PC platforms and referencing them is discouraged
-    // for applications intended to run on mobile devices.
   };
 
   /**
@@ -225,9 +297,14 @@ namespace pico8 {
    * @brief Draws the outline of a rectangle on the screen.
    *
    * This function draws the outline of a rectangle from the top-left corner (x0, y0) to the bottom-right corner (x1, y1).
-   * Unlike PICO-8, the coordinates provided are NOT inclusive, meaning the pixels along the right edge 
-   * (x1) and the bottom edge (y1) are not drawn. The outline is drawn by combining four filled rectangles to 
+   * Unlike PICO-8, the coordinates provided are NOT inclusive, meaning the pixels along the right edge
+   * (x1) and the bottom edge (y1) are not drawn. The outline is drawn by combining four filled rectangles to
    * create the top, bottom, left, and right edges of the rectangle.
+   *
+   * The outlined area is exactly the area `rectfill(x0, y0, x1, y1)` would fill: the outline is drawn
+   * *inside* it, on columns x0 / x1-1 and rows y0 / y1-1. If (x0, y0) is specified as being lower-right
+   * of (x1, y1), the coordinates are automatically swapped. A degenerate box (x0 == x1 or y0 == y1)
+   * draws nothing, again matching rectfill().
    *
    * @param x0 The x-coordinate of the top-left corner.
    * @param y0 The y-coordinate of the top-left corner.
@@ -340,7 +417,7 @@ namespace pico8 {
      * @param flip_x If true, the sprite is drawn inverted left to right. The default is false.
      * @param flip_y If true, the sprite is drawn inverted top to bottom. The default is false.
      * @param selpal The palette selection for the sprite. The default is 0.
-    
+     * 
      * @note Only bank 0 is accessible for this function, limiting `n` to the range [0, 255]. The BEEP-8 
      *       system’s VRAM is divided into 16 banks of 128x128 pixels each, arranged in a 4x4 grid. While 
      *       other functions may access these additional banks, `spr()` is restricted to bank 0.
@@ -479,7 +556,6 @@ namespace pico8 {
    *
    * @note Before setting the palette, ensure the z depth is set using the setz() function to define the depth
    *       for subsequent drawing operations. The depth set by setz() will affect how the palette is applied during rendering.
-   * @note This function may only be called during the execution of draw(); calling it elsewhere is not permitted.
    *
    * @code
    * #include <array>
@@ -494,7 +570,7 @@ namespace pico8 {
    *     // Set the z depth
    *     setz(3);
    * 
-   *     // Set the palette (must be called inside draw())
+   *     // Set the palette
    *     setpal(palsel, palette);
    * 
    *     // Draw sprite
@@ -593,9 +669,6 @@ namespace pico8 {
    * 
    * @note The z-coordinate specified in setz() must be greater than or equal to 0 and less than or 
    *       equal to the value returned by this function.
-   *
-   * @note Currently, this function returns 16. However, this value may be expanded in the future 
-   *       to support deeper z-coordinate ranges.
    */
   int maxz();
 
@@ -701,22 +774,20 @@ namespace pico8 {
    *       text, requiring re-rendering in the subsequent frame.
    */
   struct SprCursor {
-    int x; ///< The x-coordinate in pixels (column position).
-    int y; ///< The y-coordinate in pixels (row position).
-    Color color; ///< The drawing color for text (default: CURRENT).
-    int z; ///< The depth (Z-value) for rendering order (default: 0).
+      int x = 0; ///< The x-coordinate in pixels (column position).
+      int y = 0; ///< The y-coordinate in pixels (row position).
+      Color color = CURRENT; ///< The drawing color for text (default: CURRENT).
+      int z = 0; ///< The depth (Z-value) for rendering order (default: 0).
 
-    /**
-     * @brief Resets the cursor state to its default values.
-     *
-     * Sets the position to (0, 0), color to `CURRENT`, and depth to 0.
-     */
-    inline void Reset() {
-        x = y = z = 0;
-        color = CURRENT;
-    }
-
-    SprCursor(){ Reset(); }
+      /**
+       * @brief Resets the cursor state to its default values.
+       *
+       * Sets the position to (0, 0), color to `CURRENT`, and depth to 0.
+       */
+      inline void Reset() {
+          x = y = z = 0;
+          color = CURRENT;
+      }
   };
 
   /**
@@ -725,9 +796,6 @@ namespace pico8 {
    * This function positions the sprite cursor at the specified (x, y) coordinates
    * for subsequent calls to `sprint()`. It allows precise pixel-level positioning
    * and supports color and depth settings for flexible text rendering.
-   *
-   * The cursor position set by this function is in absolute screen coordinates
-   * and is not affected by `camera()` transformations.
    *
    * @param x The x-coordinate in pixels (default: 0).
    * @param y The y-coordinate in pixels (default: 0).
@@ -744,7 +812,7 @@ namespace pico8 {
    */
   const SprCursor& scursor(int x = 0, int y = 0, Color color = CURRENT, int z = 0);
 
-  /**
+   /**
    * @brief Prints formatted text using sprites for rendering.
    *
    * This function outputs text rendered as sprites, allowing for fine control over
@@ -767,18 +835,11 @@ namespace pico8 {
    * sprint( "\e[50;71mBlack/Blue\n" ); // Foreground: Black, Background: Dark Blue
    * sprint( "\e[51;70mDarkBlue/Black\n" ); // Foreground: Dark Blue, Background: Black
    * @endcode
-   *
    * @param format The format string for text output (supports printf-style formatting).
    * @param ... Additional arguments for formatting.
-   *
    * @note Unlike PICO-8's `print()`, this function requires explicit cursor and color
    *       settings through `scursor()`. Text rendering via sprites provides per-pixel
    *       precision and supports depth sorting.
-   *
-   * @note Since text drawn with `sprint()` is part of the framebuffer and cleared by `cls()`,
-   *       it must be reissued every frame to remain visible. Excessive or frequent use of 
-   *       `sprint()` may increase CPU load, so it is recommended to use it carefully,
-   *       especially when rendering large amounts of dynamic text.
    *
    * @see scursor()
    */
@@ -818,22 +879,19 @@ namespace pico8 {
    *       require re-rendering unless explicitly cleared or overwritten.
    */
   struct BgCursor {
-    int x; ///< The x-coordinate in 8x8 TILE units.
-    int y; ///< The y-coordinate in 8x8 TILE units.
-    BgPal pal; ///< The palette index for text rendering (default: BG_PAL_CURRENT).
+      int x = 0; ///< The x-coordinate in 8x8 TILE units.
+      int y = 0; ///< The y-coordinate in 8x8 TILE units.
+      BgPal pal = BG_PAL_CURRENT; ///< The palette index for text rendering (default: BG_PAL_CURRENT).
 
-    /**
-     * @brief Resets the cursor state to its default values.
-     *
-     * Sets the position to (0, 0) and palette to `BG_PAL_CURRENT`.
-     */
-    inline void Reset() {
-      x = y = 0;
-      pal = BG_PAL_CURRENT;
-    }
-    BgCursor(){
-      Reset();
-    }
+      /**
+       * @brief Resets the cursor state to its default values.
+       *
+       * Sets the position to (0, 0) and palette to `BG_PAL_CURRENT`.
+       */
+      inline void Reset() {
+          x = y = 0;
+          pal = BG_PAL_CURRENT;
+      }
   };
 
   /**
@@ -886,38 +944,6 @@ namespace pico8 {
    * @see setpal()
    */
   void print(std::string_view format, ...);
-  
-  /**
-   * @brief Prints formatted debug output to the screen in the foremost layer.
-   *
-   * This function behaves similarly to `printf`, allowing formatted text output
-   * for debugging purposes. It accepts a format string followed by a variable
-   * number of arguments.
-   *
-   * The debug text is always rendered in the topmost layer, ensuring that it remains
-   * visible regardless of other graphics or UI elements.
-   *
-   * Debug output can be enabled or disabled globally by using `dprintenable()`.
-   * When disabled, calls to `dprint()` have no effect.
-   *
-   * @param format The format string specifying how to format the output.
-   * @param ... Additional arguments to be formatted according to the format string.
-   */
-  void dprint(std::string_view format, ...);
-
-  /**
-   * @brief Enables or disables debug text output generated by `dprint()`.
-   *
-   * This function globally controls whether debug text printed by `dprint()` appears on screen.
-   * When disabled, all `dprint()` calls are ignored.
-   *
-   * By default, debug output is enabled at startup.
-   *
-   * @param enable Set to `true` to enable debug output, or `false` to disable it.
-   *
-   * @note Disabling debug output may slightly improve performance during runtime.
-   */
-  void dprintenable(bool enable);
 
   /**
    * @brief Prints formatted text at a specified position and palette on the background layer.
@@ -942,65 +968,56 @@ namespace pico8 {
   void print(int x, int y, BgPal pal, std::string_view format, ...);
 
   /**
-   * @brief Sets attribute flags for a sprite or background (BG) pattern.
+   * @brief Sets the value of a sprite flag or all flags for a given sprite.
    *
-   * Each sprite or BG pattern has an associated 8-bit attribute flag field, 
-   * which can be freely customized using this function. 
-   * These flags are commonly used to define properties such as collision types 
-   * ("wall", "water", etc.) or other gameplay-related attributes for each pattern.
+   * Each sprite has eight customizable flags that can be set using this function.
+   * These flags can be used for any purpose, such as defining layers or collision
+   * behaviors for game entities. The flags are numbered from 0 to 7, and this function
+   * allows setting individual flags or all flags at once.
    *
-   * Flags are numbered from 0 to 7. This function allows setting an individual flag 
-   * or all flags at once by specifying a bit field.
-   *
-   * @param sprite_index The index of the sprite or BG pattern whose flag(s) will be set.
-   * @param flag_index The flag index to set (0–7). If omitted or set to 0xff, 
-   *                   all flags for the pattern will be set using the provided value as a bit field.
-   * @param value The value to assign to the flag (1 to set, 0 to clear).
-   *              If `flag_index` is omitted, this value is treated as a complete 8-bit flag field.
-   * @param sprite_pattern_bank The sprite pattern bank to operate on. BEEP-8 supports multiple 
-   *                            banks (up to 16), whereas PICO-8 supports only one. 
+   * @param sprite_index The index of the sprite whose flag(s) will be set.
+   * @param flag_index The flag index to be set (0-7). If omitted or set to 0xff, 
+   *                   all flags for the sprite will be set to the given value.
+   * @param value The value to set the flag to (1 to set the flag, 0 to clear it).
+   *              If `flag_index` is omitted, this value is treated as a bit field for all flags.
+   * @param sprite_pattern_bank The sprite bank to operate on. BEEP-8 supports multiple 
+   *                            sprite banks (up to 16), whereas PICO-8 only has one. 
    *                            Defaults to 0 (the first sprite bank).
    *
-   * @note Unlike PICO-8, BEEP-8 allows selecting different sprite pattern banks, enabling more flexible asset organization.
+   * @note Unlike PICO-8, BEEP-8 allows selecting a sprite pattern bank, enabling the use of 
+   * multiple sprite banks.
    *
    * Example usage:
    * @code
-   * fset(10, 1, 1);    // Set flag 1 of sprite/BG pattern 10 to 1 (true)
-   * fset(5, 0xff, 7);  // Set all flags of sprite/BG pattern 5 to the bit field value 7
+   * fset(10, 1, 1);    // Set flag 1 of sprite 10 to 1 (true)
+   * fset(5, 0xff, 7);  // Set all flags of sprite 5 to the bit field value 7
    * @endcode
    */
   void fset(u8 sprite_index, u8 flag_index = 0xff, u8 value = 0, u8 sprite_pattern_bank = 0);
 
   /**
-   * @brief Retrieves attribute flags for a sprite or background (BG) pattern.
+   * @brief Gets the value of a sprite flag or all flags for a given sprite.
    *
-   * Each sprite or BG pattern has an associated 8-bit attribute flag field,
-   * which can be used to define gameplay-related properties such as collision
-   * types ("wall", "water", etc.). This function retrieves either the value
-   * of a specific flag or the entire flag bit field for a given pattern.
+   * This function retrieves the value of a specified flag for a sprite, or all flags 
+   * at once if no specific flag is provided. Flags are numbered from 0 to 7, with 
+   * flag 0 representing the least significant bit.
    *
-   * Flags are numbered from 0 to 7, with flag 0 representing the least significant bit.
-   *
-   * @param sprite_index The index of the sprite or BG pattern whose flag(s) will be retrieved.
-   * @param flag_index The flag index to retrieve (0–7). If omitted or set to 0xff,
-   *                   the entire 8-bit flag field will be returned.
-   * @param sprite_pattern_bank The sprite pattern bank to operate on. BEEP-8 supports multiple
-   *                            sprite banks (up to 16), whereas PICO-8 only has one.
+   * @param sprite_index The index of the sprite whose flag(s) will be retrieved.
+   * @param flag_index The flag index to retrieve (0-7). If omitted or set to 0xff, 
+   *                   the entire bit field representing all flags for the sprite is returned.
+   * @param sprite_pattern_bank The sprite bank to operate on. BEEP-8 supports multiple 
+   *                            sprite banks (up to 16), whereas PICO-8 only has one. 
    *                            Defaults to 0 (the first sprite bank).
-   * @return The value of the specified flag (0 or 1), or the full 8-bit flag field
+   * @return The value of the specified flag (0 or 1), or the bit field of all flags 
    *         if no flag index is provided.
-   *
-   * @note Unlike PICO-8, BEEP-8 allows selecting different sprite pattern banks,
-   *       enabling more flexible asset management.
    *
    * Example usage:
    * @code
-   * u8 flag = fget(10, 1);  // Get the value of flag 1 of sprite/BG pattern 10
-   * u8 flags = fget(5);     // Get the full bit field of flags for sprite/BG pattern 5
+   * u8 flag = fget(10, 1);  // Get the value of flag 1 of sprite 10
+   * u8 flags = fget(5);     // Get the bit field of all flags for sprite 5
    * @endcode
    */
   u8 fget(u8 sprite_index, u8 flag_index = 0xff, u8 sprite_pattern_bank = 0);
-
 
   enum  BgIndex{ BG_0, BG_1, BG_2, BG_3 , BG_MAX };
   enum  BgTiles{
@@ -1013,6 +1030,10 @@ namespace pico8 {
     TILES_512 = 1<<9,
     TILES_1024= 1<<10,
     TILES_2048= 1<<11,
+    TILES_4096= 1<<12,
+    TILES_8192= 1<<13,
+    TILES_16384= 1<<14,
+    TILES_32768= 1<<15,
   };
   using BgTilesPtr = std::shared_ptr<std::vector<b8PpuBgTile>>;
 
@@ -1068,6 +1089,21 @@ namespace pico8 {
   /**
    * @brief Alias for `map()` function to draw the configured background layer at a specified pixel offset.
    *
+   * This function serves as an alias to `map()`, providing the same functionality for rendering a background layer 
+   * at the given horizontal (`upix`) and vertical (`vpix`) pixel offsets. The background index specifies which 
+   * configured background to draw.
+   * 
+   * Like `map()`, `mapdraw()` respects the `setz()` setting, so the background is drawn at the specified depth.
+   * The rendering is unaffected by `camera()` settings, meaning the background is drawn without camera transformations.
+   * 
+   * @param upix The horizontal pixel offset.
+   * @param vpix The vertical pixel offset.
+   * @param index The background index to draw (from 0 to BG_MAX-1). If omitted, `BG_0` is used as the default.
+   * 
+   * @note `mapdraw()` behaves identically to `map()` and always covers the entire display area with the configured 
+   * background tiles. Ensure `mapsetup()` has been called to configure the background layer before use, 
+   * as failure to do so results in undefined behavior.
+   * 
    * @see map()
    */
   inline  void  mapdraw(s16 upix,s16 vpix, BgIndex index = BG_0 ){
@@ -1075,44 +1111,35 @@ namespace pico8 {
   }
 
   /**
-   * @brief Retrieves the full tile information at a specific position in the background map.
+   * @brief Retrieves the tile at a specific position in the background map.
    *
-   * This function fetches the complete `b8PpuBgTile` structure at the given (x, y) coordinates
-   * within the specified background index. If the coordinates are out of bounds, a default
-   * "zero" tile is returned.
-   *
-   * The returned `b8PpuBgTile` contains detailed attributes, including the tile ID components 
-   * (XTILE, YTILE) and palette selection information.
+   * This function fetches the tile at the given x and y coordinates within the background map
+   * of the specified background index. If the coordinates are out of bounds, a default "zero" tile
+   * is returned.
    *
    * @param x The x-coordinate of the tile in the background map.
    * @param y The y-coordinate of the tile in the background map.
    * @param index The background index from which to retrieve the tile (from 0 to BG_MAX-1).
    * @return The `b8PpuBgTile` at the specified position, or a default tile if out of bounds.
-   *
-   * @see mget(u32, u32, BgIndex) — If you only need the tile ID (as a single u16 value), use mget().
    */
-  b8PpuBgTile mgett(u32 x, u32 y, BgIndex index = BG_0);
+  b8PpuBgTile mgett(u32 x,u32 y,BgIndex index = BG_0 );
 
   /**
    * @brief Retrieves the tile ID at a specific position in the background map.
    *
-   * This function fetches the tile at the given (x, y) coordinates within the specified background index
-   * and returns its tile ID, computed as `YTILE * 16 + XTILE`.
-   * 
-   * If the coordinates are out of bounds, the `mgett` function internally returns a default "zero" tile,
-   * and this function returns the corresponding ID for that tile.
+   * This function fetches the tile from the background map at the given (x, y) coordinates
+   * within the specified background index and returns its ID. The ID is calculated as:
+   * `YTILE * 16 + XTILE`, where `YTILE` and `XTILE` are properties of the tile.
    *
-   * This function is suitable when you only need to know which pattern (tile ID) is placed at a given location,
-   * without requiring full tile attribute information.
+   * If the coordinates are out of bounds, the `mgett` function will return a default "zero" tile,
+   * and this function will return the corresponding ID for that tile.
    *
    * @param x The x-coordinate of the tile in the background map.
    * @param y The y-coordinate of the tile in the background map.
    * @param index The background index from which to retrieve the tile (default is `BG_0`).
    * @return The ID of the tile at the specified position, computed as `YTILE * 16 + XTILE`.
-   *
-   * @see mgett(u32, u32, BgIndex) — If you need full tile attribute details, use mgett().
    */
-  u16 mget(u32 x, u32 y, BgIndex index = BG_0);
+  u16 mget(u32 x,u32 y,BgIndex index = BG_0 );
 
   /**
    * @brief Sets a tile on the background map with an extended `bank` parameter for flexible tile selection.
@@ -1307,49 +1334,31 @@ namespace pico8 {
   s32 stat(int index);
 
   /**
-   * @brief Retrieves the current X position of the mouse or touch input.
-   *
-   * On PC environments, this function returns the current mouse X position.
-   * On smartphone or tablet environments, it returns the X coordinate of the active touch input.
-   *
-   * The returned value is a fixed-point 8-bit fractional number (fx8), 
-   * ranging from 0 to 127 (corresponding to the 128-pixel screen width).
-   *
-   * @return The current X position as a fixed-point 8-bit fractional value.
+   * Retrieves the current X position of the mouse.
+   * 
+   * @return The current X position of the mouse.
    */
   fx8 mousex();
 
   /**
-   * @brief Retrieves the current Y position of the mouse or touch input.
-   *
-   * On PC environments, this function returns the current mouse Y position.
-   * On smartphone or tablet environments, it returns the Y coordinate of the active touch input.
-   *
-   * The returned value is a fixed-point 8-bit fractional number (fx8), 
-   * ranging from 0 to 240 (corresponding to the 240-pixel screen height).
-   *
-   * @return The current Y position as a fixed-point 8-bit fractional value.
+   * Retrieves the current Y position of the mouse.
+   * 
+   * @return The current Y position of the mouse.
    */
   fx8 mousey();
 
   /**
-   * @brief Retrieves the current status of the mouse buttons.
-   *
+   * Retrieves the current status of the mouse buttons.
    * The status is represented as a bitmask using the `MouseBtn` enumeration,
    * where each bit indicates the state of a specific mouse button:
    * - `MouseBtn::LEFT` for the left button
-   *
-   * Example usage:
-   * @code
+   * 
+   * Example:
    * if (mousestatus() & MouseBtn::LEFT) {
    *     // The left mouse button is pressed
    * }
-   * @endcode
-   *
+   * 
    * @return The current button status as a bitmask.
-   *
-   * @note Although mouse button input is supported, it is generally not recommended in BEEP-8,
-   *       as the platform primarily targets smartphones and tablets where touch input is standard.
    */
   u32 mousestatus();
 
@@ -1770,7 +1779,7 @@ namespace pico8 {
    * 
    * Example:
    * @code
-   * class Pico8App : public Pico8 {
+   * class _Pico8 : public Pico8 {
    * public:
    *     void _init() override {
    *         // Initialize game variables

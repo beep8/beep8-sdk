@@ -767,7 +767,7 @@ class PixArt : public Pico8 {
     }
     // viewport box: 1px OUTSIDE the edited region [vx,vx+VIEW-1] x [vy,vy+VIEW-1].
     // Edges past the canvas edge (e.g. vx==0 -> left col -1) clip off-screen.
-    if (overview) rect(vx - 1, vy - 1, vx + VIEW, vy + VIEW, WHITE);
+    if (overview) rect(vx - 1, vy - 1, vx + VIEW + 1, vy + VIEW + 1, WHITE);
 
     // white background for everything below the palette (toolbars sit on white)
     rectfill(0, PAL_Y + PAL_H, SCRW, SCRH, WHITE);
@@ -781,7 +781,7 @@ class PixArt : public Pico8 {
     { // selection marker
       const int sx = (sel % PAL_COLS) * PAL_SW;
       const int sy = PAL_Y + (sel / PAL_COLS) * PAL_SW;
-      rect(sx, sy, sx + PAL_SW - 1, sy + PAL_SW - 1, WHITE);
+      rect(sx, sy, sx + PAL_SW, sy + PAL_SW, WHITE);
     }
 
     // toolbar buttons (positions via btnPos). fg = BLACK when active/available,
@@ -806,7 +806,9 @@ class PixArt : public Pico8 {
         case B_FLIPH: case B_FLIPV: break;            // available in both modes
         case B_MIRROR: if (mirror == 0) fg = LIGHT_GREY; break;  // off = grey, on = black
         case B_SAVE: case B_LOAD: case B_DL: case B_IMPORT:
-          if (netPhase != 0 || dlPhase != 0 || impPhase != 0) fg = LIGHT_GREY; break;  // grey while a net/download/import op runs
+          // grey while a net/download/import op runs
+          if (netPhase != 0 || dlPhase != 0 || impPhase != 0) fg = LIGHT_GREY;
+          break;
       }
       int bx, by; btnPos(id, bx, by);
       const bool pressed = (fxTtl > 0 && fxId == id);   // cut/copy/paste tap flash
@@ -817,14 +819,13 @@ class PixArt : public Pico8 {
     // light-grey box grouping the four mutually-exclusive tools (drawn over the
     // button panels so its left edge stays visible at column 0). Top edge nudged
     // up 1px (BARA_Y-2) for a touch more breathing room above the icons.
-    rect(0, BARA_Y - 2, 3 * PITCH + ICON, BARA_Y + ICON, LIGHT_GREY);
+    rect(0, BARA_Y - 2, 3 * PITCH + ICON + 1, BARA_Y + ICON + 1, LIGHT_GREY);
     // light-grey box grouping the 2x2 transfer block (cloud row over file row).
-    // rect() draws its right edge ON column x1 and its bottom edge ON row y1
-    // (only rectfill treats them as exclusive), so the last on-screen column /
-    // row is SCRW-1 / SCRH-1 -- passing SCRW/SCRH would push both off screen.
-    // Both land on pixels the 16x16 glyphs leave blank, so the box never cuts
-    // into an icon.
-    rect(SCRW - ICON - PITCH - 2, BARC_Y - 2, SCRW - 1, SCRH - 1, LIGHT_GREY);
+    // rect() is exclusive like rectfill(), so its right/bottom edges land on
+    // columns/rows x1-1 / y1-1: passing SCRW/SCRH puts them on the last
+    // on-screen column/row. Both land on pixels the 16x16 glyphs leave blank,
+    // so the box never cuts into an icon.
+    rect(SCRW - ICON - PITCH - 2, BARC_Y - 2, SCRW, SCRH, LIGHT_GREY);
 
     // net status banner, drawn on top of the edit area: "SAVING..."/"LOADING..."
     // while the blocking op is pending, then the result for msgTtl frames.
@@ -834,7 +835,7 @@ class PixArt : public Pico8 {
                     : (impPhase != 0) ? "IMPORT..."
                     : netMsg;
       rectfill(0, 54, SCRW, 74, BLACK);
-      rect(0, 54, SCRW - 1, 73, WHITE);
+      rect(0, 54, SCRW, 74, WHITE);
       sprint(30, 60, WHITE, t);
     }
   }

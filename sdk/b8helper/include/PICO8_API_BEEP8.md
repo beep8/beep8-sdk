@@ -108,8 +108,10 @@ void poly(const Poly& pol, Color color = CURRENT);                          // f
 void poly(fx8 x0, fx8 y0, fx8 x1, fx8 y1, fx8 x2, fx8 y2, Color color = CURRENT);
 ```
 
-`rectfill`/`rect`/`line` end coordinates are exclusive. `poly` (filled triangle) is a BEEP-8
-extension not present in PICO-8.
+`rectfill`/`rect`/`line` end coordinates are exclusive. `rect(x0,y0,x1,y1)` outlines exactly
+the box `rectfill(x0,y0,x1,y1)` fills — the outline is drawn inside it, on columns `x0`/`x1-1`
+and rows `y0`/`y1-1` — so the two can be layered without a 1px mismatch. `poly` (filled
+triangle) is a BEEP-8 extension not present in PICO-8.
 
 ---
 
@@ -281,7 +283,8 @@ fx8 resh();    // screen height in pixels
 3. **Multiple VRAM banks** — 16 banks of 128×128; `sprb()`/`lsp()` reach banks beyond bank 0.
 4. **Depth sorting** — `setz()`/`getz()`/`maxz()` give every draw call an explicit z; there is
    no `flip()`.
-5. **Exclusive end coordinates** — `rect`/`rectfill`/`line` do not draw the `x1`/`y1` edge.
+5. **Exclusive end coordinates** — `rect`/`rectfill`/`line` do not draw the `x1`/`y1` edge
+   (PICO-8 is inclusive on both). `rect` and `rectfill` cover the same box for the same args.
 6. **Two text layers** — `sprint()` (sprite layer, re-issue each frame) vs. `print()`
    (background tiles, persistent). Text color is independent of `color()`.
 7. **Radians** — `sin`/`cos`/`atan2` use radians; `atan2` takes `(y, x)`.
