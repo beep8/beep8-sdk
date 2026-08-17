@@ -29,6 +29,14 @@
 // kSlotField). Download saves the PNG to the user's device as a local
 // file over the SCI /download driver, streamed a chunk per frame to stay under
 // the 8KB FIFO. Not yet wired: share-to-the-CC0-asset-commons.
+//
+// HOSTED MODE: when an embedding page owns the file -- the AI Playground opens
+// PixArt as the editor for its sprite0.png tab -- there is no local file to
+// pick or save, so the bottom row of the transfer block disappears and the ROM
+// does that traffic itself: it pulls the page's sheet in at startup and pushes
+// the canvas back shortly after the user stops drawing (see pumpHost()). The
+// cloud row is unaffected. upload::Stat() reports the wiring; everything else
+// on screen behaves identically either way.
 #include <pico8.h>
 #include <beep8.h>
 #include <string.h>
@@ -65,6 +73,9 @@ static uint8_t g_raw[128 * 129];
 // import its own roomy receive buffer; oversize files past this are rejected
 // cleanly (not decoded) rather than corrupting the canvas.
 static uint8_t g_imp[64 * 1024];
+// Reply buffer for upload::Stat() -- one flag byte, kept apart from g_imp so a
+// status poll can never be confused with (or clobber) an in-flight import.
+static uint8_t g_stat[4];
 
 // --- browser-local savedata helpers (per-ROM localStorage over SCI) ----------
 // One command per open: "get <key>\n" -> value bytes then EOF, or "set k=v\n".
@@ -118,6 +129,14 @@ static constexpr int UNDO_MAX = 4;            // undo / redo depth
 static constexpr int FX_FRAMES = 8;           // copy/paste "pressed" nudge duration
 static constexpr int SZ = CANVAS * CANVAS;    // bytes per canvas snapshot
 static constexpr int DL_CHUNK = 4000;         // local-download bytes per frame (< 8KB SCI FIFO)
+
+// The upload channel carries two kinds of reply, one at a time (see pumpHost).
+static constexpr int IMP_IDLE = 0;            // nothing outstanding
+static constexpr int IMP_FILE = 1;            // a file transfer is arriving
+static constexpr int IMP_STAT = 2;            // a 1-byte status reply is arriving
+static constexpr int HOST_STAT_WAIT = 120;    // 2s: a host this old cannot be hosted
+static constexpr int HOST_POLL      = 15;     // idle status polls, 4x/second
+static constexpr int HOST_SYNC      = 30;     // push edits back 0.5s after the last one
 
 // toolbar button ids. Screen positions come from btnPos(); the four rows are:
 //   A: [Pen Hand Eye Fill] (left) ...  [Undo Redo]     (right, edge-aligned)
@@ -309,7 +328,15 @@ class PixArt : public Pico8 {
   char slotKey[17] = "";           // this device's cloud slot key (16 alnum + NUL)
   int  dlPhase = 0;                // 0 idle, 1 streaming a local-download PNG
   int  dlOff = 0, dlLen = 0;       // bytes of the PNG (in g_png) sent / total
-  int  impPhase = 0;              // 0 idle, 1 awaiting a local-file import (upload)
+  bool dlSilent = false;           // this download is a hosted sync: no banner
+  int  impPhase = IMP_IDLE;        // what the upload channel is busy with (IMP_*)
+  bool impSilent = false;          // this import is the hosted startup pull
+  // hosted mode (see pumpHost() and the file header)
+  bool hostKnown = false;          // has the host answered a status poll yet?
+  bool hosted = false;             // an embedding page owns our file I/O
+  int  statWait = 0;               // frames the outstanding status poll has waited
+  int  statTtl = 0;                // frames until the next status poll
+  int  dirtyTtl = 0;               // frames until edits are pushed back (0 = clean)
 
   // push a copy of `src` onto a snapshot stack, dropping the oldest when full
   static void push(uint8_t* base, int& cnt, const uint8_t* src){
@@ -317,21 +344,29 @@ class PixArt : public Pico8 {
     memcpy(base + cnt * SZ, src, SZ);
     ++cnt;
   }
+  // The canvas changed: in hosted mode, restart the countdown to pushing it
+  // back to the embedding page. Every frame of a drag re-arms it, so the push
+  // happens once the user pauses rather than mid-stroke. No-op standalone.
+  void touch(){ dirtyTtl = HOST_SYNC; }
+
   void beginStroke(){              // snapshot pre-edit state; invalidate redo
     push(reinterpret_cast<uint8_t*>(uStack), uCount, reinterpret_cast<uint8_t*>(canvas));
     rCount = 0;
+    touch();
   }
   void doUndo(){
     if (uCount == 0) return;
     uint8_t* cur = reinterpret_cast<uint8_t*>(canvas);
     push(reinterpret_cast<uint8_t*>(rStack), rCount, cur);
     memcpy(cur, reinterpret_cast<uint8_t*>(uStack) + (--uCount) * SZ, SZ);
+    touch();
   }
   void doRedo(){
     if (rCount == 0) return;
     uint8_t* cur = reinterpret_cast<uint8_t*>(canvas);
     push(reinterpret_cast<uint8_t*>(uStack), uCount, cur);
     memcpy(cur, reinterpret_cast<uint8_t*>(rStack) + (--rCount) * SZ, SZ);
+    touch();
   }
   void doCopy(){
     for (int y = 0; y < VIEW; ++y)
@@ -366,6 +401,7 @@ class PixArt : public Pico8 {
         uint8_t* b = &canvas[vy + VIEW - 1 - y][vx + x];
         const uint8_t t = *a; *a = *b; *b = t;
       }
+    touch();
   }
   // paint one logical pixel plus its mirror-mode reflection. The symmetry axis is
   // the centre of the visible 16x16 window, so the partner pixel sits at local
@@ -375,6 +411,7 @@ class PixArt : public Pico8 {
     canvas[cy][cx] = (uint8_t)sel;
     if      (mirror == 1) canvas[cy][vx + 15 - (cx - vx)] = (uint8_t)sel;
     else if (mirror == 2) canvas[vy + 15 - (cy - vy)][cx] = (uint8_t)sel;
+    touch();                       // beginStroke() only fires on press, not per pixel
   }
   // flood-fill the 4-connected run of colour `from` reachable from (sx,sy),
   // recolouring it to `sel`. Bounded to the visible 16x16 window [vx,vx+15] x
@@ -468,12 +505,15 @@ class PixArt : public Pico8 {
   // 8KB SCI FIFO. startDownload() encodes the PNG and arms the pump;
   // pumpDownload() emits the "<len>\n" header then one <=DL_CHUNK chunk per
   // frame until the whole PNG is sent (host vdownload.js then offers the file).
-  void startDownload(){
-    if (dlPhase != 0 || netPhase != 0 || impPhase != 0) return;
+  // `silent` marks a hosted background sync: same bytes over the same channel,
+  // but no "DOWNLOAD..." / "DOWNLOADED" banner, because the user did not ask
+  // for a download -- they just stopped drawing for half a second.
+  void startDownload(bool silent = false){
+    if (dlPhase != 0 || netPhase != 0 || impPhase != IMP_IDLE) return;
     const int n = png::EncodeIndexed(&canvas[0][0], CANVAS, CANVAS,
                                      png::kPico8Palette, 16, g_png, sizeof(g_png));
     if (n <= 0) { netMsg = "DL FAILED"; msgTtl = 90; return; }
-    dlLen = n; dlOff = 0; dlPhase = 1;
+    dlLen = n; dlOff = 0; dlPhase = 1; dlSilent = silent;
   }
   void pumpDownload(){
     if (dlPhase == 0) return;
@@ -495,7 +535,53 @@ class PixArt : public Pico8 {
     }
     if (dlOff >= dlLen) {
       dlPhase = 0;
-      netMsg = "DOWNLOADED"; msgTtl = 90;
+      if (!dlSilent) { netMsg = "DOWNLOADED"; msgTtl = 90; }
+      dlSilent = false;
+    }
+  }
+
+  // ---- hosted mode ---------------------------------------------------------
+  // Standalone, the two local-file buttons are the whole story: the user says
+  // when a file is read or written. Inside a page that owns the file, that
+  // question is already answered -- the sprite sheet on screen IS the file --
+  // so the ROM moves the bytes itself and the buttons disappear.
+  //
+  // Everything here rides one request/response channel that only the ROM may
+  // start, so this is a small state machine rather than an event handler:
+  //   boot        -> "stat": are we hosted? (a host too old to answer times out)
+  //   hosted      -> pull the page's sheet in once, then poll "stat" while idle
+  //   after edits -> push the canvas back HOST_SYNC frames after the last one
+  //   on request  -> the page raises STAT_FLUSH when it needs the bytes now
+  //                  (leaving the editor, or building the ROM), which just
+  //                  collapses the countdown to "next idle frame".
+  void pumpHost(){
+    if (impPhase == IMP_STAT) {
+      int n = 0;
+      const upload::State st = upload::Poll(g_stat, sizeof(g_stat), &n);
+      if (st == upload::DONE && n == 1) {
+        const int flags   = g_stat[0];
+        const bool first  = !hostKnown;
+        hostKnown = true;
+        hosted    = (flags & upload::STAT_HOSTED) != 0;
+        impPhase  = IMP_IDLE;
+        if (first && hosted) {                 // open the page's sheet at startup
+          upload::Begin(); impPhase = IMP_FILE; impSilent = true;
+        } else if (flags & upload::STAT_FLUSH) {
+          dirtyTtl = 1;                        // push on the next idle frame
+        }
+      } else if (st != upload::WAITING || ++statWait > HOST_STAT_WAIT) {
+        impPhase = IMP_IDLE;                   // silent or confused host: standalone
+        hostKnown = true;
+      }
+      return;
+    }
+    if (!hosted) return;                       // standalone: nothing to sync
+    if (impPhase != IMP_IDLE || netPhase != 0 || dlPhase != 0) return;
+    if (dirtyTtl > 1) { --dirtyTtl; return; }  // still settling after an edit
+    if (dirtyTtl == 1) { dirtyTtl = 0; startDownload(true); return; }
+    if (--statTtl <= 0) {
+      statTtl = HOST_POLL; statWait = 0;
+      upload::Stat(); impPhase = IMP_STAT;
     }
   }
 
@@ -565,6 +651,10 @@ class PixArt : public Pico8 {
     }
   }
 
+  // The local-file row has no meaning when a page owns the file: it is neither
+  // drawn nor tappable there (the sync is automatic -- see pumpHost()).
+  bool btnHidden(int id) const { return hosted && (id == B_DL || id == B_IMPORT); }
+
   void dispatch(int btn){
     switch (btn) {
       case B_PEN: case B_HAND: case B_EYE: case B_FILL: tool = btn; break;
@@ -579,11 +669,11 @@ class PixArt : public Pico8 {
       case B_FLIPH: fireFlipH(); break;               // flips = both modes
       case B_FLIPV: fireFlipV(); break;
       case B_MIRROR: mirror = (mirror + 1) % 3; break; // cycle off -> L/R -> U/D
-      case B_SAVE:  if (netPhase == 0 && dlPhase == 0 && impPhase == 0) { netOp = 0; netPhase = 1; } break;
-      case B_LOAD:  if (netPhase == 0 && dlPhase == 0 && impPhase == 0) { netOp = 1; netPhase = 1; } break;
+      case B_SAVE:  if (netPhase == 0 && dlPhase == 0 && impPhase == IMP_IDLE) { netOp = 0; netPhase = 1; } break;
+      case B_LOAD:  if (netPhase == 0 && dlPhase == 0 && impPhase == IMP_IDLE) { netOp = 1; netPhase = 1; } break;
       case B_DL:    startDownload(); break;   // stream the PNG to a local file
       case B_IMPORT:                          // pull a local PNG file into the canvas
-        if (netPhase == 0 && dlPhase == 0 && impPhase == 0) { upload::Begin(); impPhase = 1; }
+        if (netPhase == 0 && dlPhase == 0 && impPhase == IMP_IDLE) { upload::Begin(); impPhase = IMP_FILE; }
         break;
     }
   }
@@ -595,6 +685,9 @@ class PixArt : public Pico8 {
     mirror = 0;
     vx = vy = 0;                   // start on the top-left tile (0,0)-(15,15)
     ensureSlotKey();               // resolve/create this device's cloud slot key
+    // Ask the host how file I/O is wired before drawing anything: if a page
+    // owns the file, the first thing to do is open it (see pumpHost()).
+    upload::Stat(); impPhase = IMP_STAT; statWait = 0;
   }
 
   void _update() override {
@@ -619,21 +712,30 @@ class PixArt : public Pico8 {
     }
     pumpDownload();     // stream a pending local download, one chunk per frame
 
-    // Local PNG import: after B_IMPORT arms upload::Begin(), drain the host's
-    // reply across frames; when the whole file has arrived, decode + remap it.
-    if (impPhase == 1) {
+    // PNG import: after B_IMPORT (or the hosted startup pull) arms
+    // upload::Begin(), drain the host's reply across frames; when the whole
+    // file has arrived, decode + remap it. A hosted startup pull is silent
+    // unless it fails -- the page opening its own file is not news.
+    if (impPhase == IMP_FILE) {
       int n = 0;
       const upload::State st = upload::Poll(g_imp, sizeof(g_imp), &n);
       if (st == upload::DONE) {
         const int r = doImport(n);
-        netMsg = (r == 1) ? "IMPORTED" : (r == -2) ? "TOO BIG (<=128)" : "IMPORT FAILED";
-        msgTtl = 90; impPhase = 0;
+        if (r != 1 || !impSilent) {
+          netMsg = (r == 1) ? "IMPORTED" : (r == -2) ? "TOO BIG (<=128)" : "IMPORT FAILED";
+          msgTtl = 90;
+        }
+        impPhase = IMP_IDLE; impSilent = false;
+        dirtyTtl = 0;                    // just took the page's copy: not dirty
       } else if (st == upload::CANCELLED) {
-        netMsg = "CANCELLED"; msgTtl = 90; impPhase = 0;
+        if (!impSilent) { netMsg = "CANCELLED"; msgTtl = 90; }
+        impPhase = IMP_IDLE; impSilent = false;
       } else if (st == upload::ERROR) {
-        netMsg = "IMPORT FAILED"; msgTtl = 90; impPhase = 0;
+        netMsg = "IMPORT FAILED"; msgTtl = 90;
+        impPhase = IMP_IDLE; impSilent = false;
       }
     }
+    pumpHost();         // hosted mode: startup pull, idle polls, edit push-back
 
     const b8HifMouseStatus* ms = b8HifGetMouseStatus();
     const int  mx    = ms->mouse_x >> 4;   // fixed-point (/16) -> pixels
@@ -685,6 +787,7 @@ class PixArt : public Pico8 {
           tool = B_PEN;                            // picking a color implies "draw"
         } else {                                   // toolbar buttons (positions from btnPos)
           for (int id = 0; id < B_N; ++id) {
+            if (btnHidden(id)) continue;
             int bx, by; btnPos(id, bx, by);
             if (mx >= bx && mx < bx + ICON && my >= by && my < by + ICON) { dispatch(id); break; }
           }
@@ -787,6 +890,7 @@ class PixArt : public Pico8 {
     // toolbar buttons (positions via btnPos). fg = BLACK when active/available,
     // LIGHT_GREY when inactive/disabled; the tool trio shows the current tool black.
     for (int id = 0; id < B_N; ++id) {
+      if (btnHidden(id)) continue;             // hosted: no local-file row
       Color fg = BLACK;
       switch (id) {
         case B_PEN: case B_HAND: case B_EYE: fg = (id == tool) ? BLACK : LIGHT_GREY; break;
@@ -806,8 +910,13 @@ class PixArt : public Pico8 {
         case B_FLIPH: case B_FLIPV: break;            // available in both modes
         case B_MIRROR: if (mirror == 0) fg = LIGHT_GREY; break;  // off = grey, on = black
         case B_SAVE: case B_LOAD: case B_DL: case B_IMPORT:
-          // grey while a net/download/import op runs
-          if (netPhase != 0 || dlPhase != 0 || impPhase != 0) fg = LIGHT_GREY;
+          // Grey while a net/download/import op the user started is running.
+          // Hosted background syncs are excluded: they fire every time drawing
+          // settles, and blinking the buttons four times a minute would read as
+          // a glitch. (A tap landing inside those few frames is dropped by
+          // dispatch()'s guard, same as before -- it just is not advertised.)
+          if (netPhase != 0 || (dlPhase != 0 && !dlSilent)
+              || (impPhase == IMP_FILE && !impSilent)) fg = LIGHT_GREY;
           break;
       }
       int bx, by; btnPos(id, bx, by);
@@ -824,15 +933,21 @@ class PixArt : public Pico8 {
     // rect() is exclusive like rectfill(), so its right/bottom edges land on
     // columns/rows x1-1 / y1-1: passing SCRW/SCRH puts them on the last
     // on-screen column/row. Both land on pixels the 16x16 glyphs leave blank,
-    // so the box never cuts into an icon.
-    rect(SCRW - ICON - PITCH - 2, BARC_Y - 2, SCRW, SCRH, LIGHT_GREY);
+    // so the box never cuts into an icon. Hosted, the file row is gone, so the
+    // box closes up around the cloud row alone.
+    rect(SCRW - ICON - PITCH - 2, BARC_Y - 2, SCRW,
+         hosted ? (BARC_Y + ICON + 2) : SCRH, LIGHT_GREY);
 
     // net status banner, drawn on top of the edit area: "SAVING..."/"LOADING..."
     // while the blocking op is pending, then the result for msgTtl frames.
-    if (netPhase != 0 || dlPhase != 0 || impPhase != 0 || msgTtl > 0) {
+    // A hosted background sync (silent download / status poll / startup pull)
+    // deliberately shows nothing: it is not an operation the user started.
+    const bool busyShown = (netPhase != 0) || (dlPhase != 0 && !dlSilent)
+                        || (impPhase == IMP_FILE && !impSilent);
+    if (busyShown || msgTtl > 0) {
       const char* t = (netPhase != 0) ? (netOp == 0 ? "SAVING..." : "LOADING...")
-                    : (dlPhase  != 0) ? "DOWNLOAD..."
-                    : (impPhase != 0) ? "IMPORT..."
+                    : (dlPhase  != 0 && !dlSilent)  ? "DOWNLOAD..."
+                    : (impPhase == IMP_FILE && !impSilent) ? "IMPORT..."
                     : netMsg;
       rectfill(0, 54, SCRW, 74, BLACK);
       rect(0, 54, SCRW, 74, WHITE);

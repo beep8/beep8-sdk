@@ -22,15 +22,25 @@ namespace {
   int  st_idle    = 0;          // consecutive Poll()s with no new bytes
 }
 
+namespace {
+// Both requests share one reply state machine: only one is ever outstanding.
+void request(const char* cmd) {
+  while (B8_FIFO_SCI_RX_LEN(SCI_CH_UP) > 0) (void)B8_FIFO_SCI_RX(SCI_CH_UP);
+  for (int i = 0; cmd[i]; ++i) B8_FIFO_SCI_TX(SCI_CH_UP) = (u32)(u8)cmd[i];
+  st_state = upload::WAITING; st_need = -1; st_got = 0; st_hval = 0;
+  st_discard = false; st_started = false; st_idle = 0;
+}
+}
+
 namespace upload {
 
-void Begin() {
-  while (B8_FIFO_SCI_RX_LEN(SCI_CH_UP) > 0) (void)B8_FIFO_SCI_RX(SCI_CH_UP);
-  static const char cmd[] = "open\n";
-  for (int i = 0; cmd[i]; ++i) B8_FIFO_SCI_TX(SCI_CH_UP) = (u32)(u8)cmd[i];
-  st_state = WAITING; st_need = -1; st_got = 0; st_hval = 0; st_discard = false;
-  st_started = false; st_idle = 0;
-}
+void Begin() { request("open\n"); }
+
+// Status probe. The reply rides the same "<len>\n" framing as a file, so it is
+// drained by the ordinary Poll() -- a 1-byte payload holding the flag bits.
+// A host that predates this request never answers, so callers must give up on
+// their own (Poll() only times out once bytes have started arriving).
+void Stat() { request("stat\n"); }
 
 State Poll(unsigned char* buf, int cap, int* out_len) {
   if (st_state != WAITING) return (State)st_state;

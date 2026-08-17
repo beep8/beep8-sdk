@@ -35,13 +35,30 @@
  *     default: break;         // WAITING: keep polling next frame
  *   }
  * @endcode
+ *
+ * When the player runs inside an embedding page that owns the file (the AI
+ * Playground opening PixArt on its sprite0.png tab), there is no picker and no
+ * disk: Begin() then means "give me the page's copy", and the page can ask for
+ * the ROM's data back at any time. Stat() exposes that wiring to the ROM so it
+ * can behave like an editor for the page's file instead of a file dialog app.
  */
 #pragma once
 namespace upload {
   enum State { IDLE = 0, WAITING, DONE, CANCELLED, ERROR };
 
+  // Flag bits in the 1-byte Stat() reply (see below).
+  enum { STAT_HOSTED = 1,     // an embedding page owns our file I/O
+         STAT_FLUSH  = 2 };   // ...and it is asking for the current data now
+
   // Ask the host to open a file picker. Clears any stale bytes first.
   void  Begin();
+
+  // Ask the host how file I/O is wired up right now. The reply is a 1-byte
+  // payload of STAT_* bits, read back through the ordinary Poll() (DONE with
+  // *out_len == 1). Hosts older than this request stay silent, so treat "no
+  // answer within a second or so" as "not hosted" -- Poll() cannot time that
+  // out for you, since it only watches for a transfer stalling mid-flight.
+  void  Stat();
 
   // Drain whatever has arrived this frame. Returns WAITING until the whole
   // payload is in `buf` (DONE, *out_len set), or CANCELLED / ERROR. Call once
