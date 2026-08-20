@@ -395,13 +395,13 @@ class PixArt : public Pico8 {
       }
   }
   void doFlipV(){                  // mirror the 16x16 tile top<->bottom (reverse rows)
+    beginStroke();                 // ...which is also what marks the canvas dirty
     for (int y = 0; y < VIEW / 2; ++y)
       for (int x = 0; x < VIEW; ++x){
         uint8_t* a = &canvas[vy + y][vx + x];
         uint8_t* b = &canvas[vy + VIEW - 1 - y][vx + x];
         const uint8_t t = *a; *a = *b; *b = t;
       }
-    touch();
   }
   // paint one logical pixel plus its mirror-mode reflection. The symmetry axis is
   // the centre of the visible 16x16 window, so the partner pixel sits at local
