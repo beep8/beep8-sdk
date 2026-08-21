@@ -45,6 +45,18 @@ int main() {
 
 ---
 
+> **Drawing calls are only legal inside `_draw()`.** `cls`, `pset`, `rect`, `rectfill`, `line`,
+> `circ`, `circfill`, `poly`, `spr`, `sprb`, `map`, `pal` and `setpal` all emit PPU commands into
+> the frame's command buffer, and each one asserts `NOT_DURING_DRAWING` if called from `_init()`
+> or `_update()`. That compiles cleanly and then dies on the first frame with
+> `PICO-8 API ERROR : 1`, so it is a runtime-only trap. One-time setup that happens to be a
+> drawing call — `pal()`/`setpal()` are the usual cases — goes inside `_draw()` behind a
+> first-frame flag; the palette itself persists once written. `lsp()` and `mapsetup()` are the
+> setup calls that do belong in `_init()`.
+>
+> `cursor()`, `print()`, `scursor()` and `sprint()` are *not* subject to this — they write to a
+> text stream rather than the PPU command buffer.
+
 ## Enums
 
 ### `Color`
@@ -161,6 +173,20 @@ void sprint(int x, int y, Color color, std::string_view format, ...);
 Supports ANSI-style escape sequences for BEEP-8 color codes, e.g.
 `sprint("\e[50mRed\e[0m\n")` (foreground 50), `sprint("\e[57;72mWhite on purple\n")`.
 
+**`scursor()` takes pixels, and the font is 8x8.** A glyph advances 8 px horizontally and a
+line of text is 8 px tall, so consecutive lines must be **8 or more pixels apart** —
+`scursor(x, 8)`, `scursor(x, 16)`, `scursor(x, 24)` … Passing row numbers (`scursor(x, 1)`,
+`scursor(x, 2)`) stacks every line on top of the previous one.
+
+The unit is pixels because this layer draws text as *sprites*, which are not bound to the tile
+grid. The background layer below writes into the 8x8 tilemap, so its `cursor()` is in tile
+units — one unit there is eight here: `cursor(2, 3)` puts text where `scursor(16, 24)` would.
+
+`sprint()` neither wraps nor clips. At the default 128 px width a line holds at most 16
+characters; anything past the right edge is drawn off-screen and silently lost, so the string
+just looks truncated. Check `x + strlen(text) * 8 <= resw()`, counting what `%d`/`%s` expand
+to rather than the length of the format string.
+
 ## Text — background layer (`print`)
 
 Rendered as 8×8 background tiles using palette colors. Persists across frames without
@@ -275,6 +301,79 @@ fx8 resh();    // screen height in pixels
 
 ---
 
+## Sound — `<sound.h>`
+
+Sound is not part of `pico8.h`; it lives in its own header and needs no assets.
+
+```cpp
+#include <sound.h>
+```
+
+Nothing has to be initialised and nothing has to be ticked — `Pico8::run()` advances the
+sequencer once per frame, and the APU is only touched once a game actually asks for a sound.
+
+`<sound.h>` owns every APU channel. Do not call `b8Apu*` or write `B8_APU_*` registers while
+using it; the low-level driver in `<b8/apu.h>` is for tools that want raw register control
+(the sound editor), not for games.
+
+### Sound effects
+
+| Function | Notes |
+|---|---|
+| `sndSfx(SndSfx id)` | Fire-and-forget one-shot. Safe to call while music plays; the oldest effect is dropped when all four voices are busy. |
+
+Presets, grouped by the kind of game event:
+
+| Group | Presets |
+|---|---|
+| Player action | `SFX_JUMP`, `SFX_LAND`, `SFX_STEP`, `SFX_SWIPE`, `SFX_SHOOT`, `SFX_CHARGE` |
+| Impact / destruction | `SFX_HIT`, `SFX_BOUNCE`, `SFX_BREAK`, `SFX_BLOCK`, `SFX_EXPLODE`, `SFX_DAMAGE` |
+| Pickups / rewards | `SFX_COIN`, `SFX_HEAL`, `SFX_POWERUP`, `SFX_LEVELUP`, `SFX_UNLOCK` |
+| Menus / UI | `SFX_SELECT`, `SFX_CONFIRM`, `SFX_CANCEL`, `SFX_DENY`, `SFX_BLIP` |
+| Game state | `SFX_ALARM`, `SFX_CLEAR`, `SFX_GAMEOVER` |
+| Environment | `SFX_SPLASH`, `SFX_WARP` |
+
+### Music (MML)
+
+| Function | Notes |
+|---|---|
+| `sndBgmPlay(t0, t1, t2, t3)` | Up to 4 tracks, loops forever. `t1`–`t3` are optional. |
+| `sndBgmPlayOnce(t0, …)` | Same, but stops at the end — for jingles. |
+| `sndBgmStop()` / `sndBgmIsPlaying()` | Stop / query. |
+| `sndBgmVolume(pct)` / `sndSfxVolume(pct)` | Master trims, 0–100. |
+| `sndStopAll()` | Music and effects. |
+
+Tracks are parsed lazily straight off the caller's string, so the strings must outlive
+playback — string literals or statics, never a local buffer.
+
+| MML | Meaning |
+|---|---|
+| `t120` | Tempo BPM (20–300, global). |
+| `o4` / `>` / `<` | Octave 1–7 (`o4 c` = middle C) / up / down. |
+| `l8` | Default note length: 1, 2, 4, 8, 16, 32. |
+| `v10` | Volume 0–15. |
+| `q6` | Gate 1–8 — the note sounds for `q/8` of its length. 8 = legato. |
+| `@0` | Waveform 0–7 (0 pulse, 1 saw, 2–7 shaped). |
+| `@n` | Switch the track to the noise generator, for drums. Low octaves read as kicks, high ones as hats. |
+| `cdefgab` | A note; optional `+`/`#`/`-`, then a length (`c16`), then dots (`c4.`). |
+| `r` / `^` | Rest / tie. |
+| `[ … ]4` | Repeat 4 times (nests 4 deep). |
+
+Whitespace and `|` are ignored.
+
+```cpp
+void _init() override {
+  sndBgmPlay("t130 o5 l8 v10 q6 [ c e g > c < ]2",   // melody
+             "t130 o3 l4 v11 @1 [ c c g g ]2",       // bass
+             0,                                      // (unused)
+             "@n t130 o5 l8 v9 [ c r > c < c ]4");    // drums
+}
+void _update() override { if( btnp(BUTTON_O) ) sndSfx(SFX_JUMP); }
+```
+
+> Browsers only start audio after the first tap/click on the page, so the opening moment of a
+> game is silent no matter what this API does. A "TAP TO START" hint is the usual fix.
+
 ## Key differences from PICO-8
 
 1. **C/C++ instead of Lua** — subclass `Pico8`, override `_init`/`_update`/`_draw`, call `run()`.
@@ -290,7 +389,9 @@ fx8 resh();    // screen height in pixels
 7. **Radians** — `sin`/`cos`/`atan2` use radians; `atan2` takes `(y, x)`.
 8. **Extensions** — `poly()` (filled triangle), `btnr()`, `rndi/rndf/rndu/rndt`, sub-pixel
    mouse (`mousex`/`mousey`).
-9. **Different `map()`** — configure with `mapsetup()`, then `map(upix, vpix)` draws the whole
+9. **No `sfx()` / `music()`** — those are PICO-8-only. BEEP-8's sound is `<sound.h>`
+   (preset effects + MML music); see the Sound section above.
+10. **Different `map()`** — configure with `mapsetup()`, then `map(upix, vpix)` draws the whole
    layer at a scroll offset (ignores `camera()`); it is not PICO-8's
    `map(cel_x, cel_y, sx, sy, ...)`.
 

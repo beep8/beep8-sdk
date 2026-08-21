@@ -804,11 +804,27 @@ namespace pico8 {
    *
    * @return The previous cursor state as a `SprCursor` struct.
    *
+   * @note The font is 8x8, so a glyph advances the cursor 8 pixels horizontally and a
+   *       line of text is 8 pixels tall. **Consecutive lines must therefore be 8 or more
+   *       pixels apart** — `scursor(x, 8)`, `scursor(x, 16)`, `scursor(x, 24)` … Passing
+   *       row numbers (`scursor(x, 1)`, `scursor(x, 2)` …) stacks every line on top of the
+   *       previous one, because these coordinates are pixels, not character cells.
+   *
+   * @note The unit is pixels because this layer draws text as *sprites*, which are freely
+   *       positionable; the background text layer addresses the tilemap instead, so its
+   *       `cursor()` is in TILE units. Same idea, one unit apart by a factor of 8:
+   *       `scursor(16, 24)` puts text where `cursor(2, 3)` would.
+   *
+   * @note At the default 128-pixel screen width a line holds at most 16 characters, and
+   *       `sprint()` neither wraps nor clips — anything past the right edge is simply drawn
+   *       off-screen and silently lost. Check `x + strlen(text) * 8 <= resw()` before
+   *       committing to a HUD layout.
+   *
    * @note This is a unique extension for sprite rendering, not present in PICO-8.
    *       The `s` prefix stands for "Sprite". As sprites are part of the framebuffer,
    *       this function must be called every frame to maintain visibility.
    *
-   * @see sprint()
+   * @see sprint(), cursor()
    */
   const SprCursor& scursor(int x = 0, int y = 0, Color color = CURRENT, int z = 0);
 
@@ -840,6 +856,12 @@ namespace pico8 {
    * @note Unlike PICO-8's `print()`, this function requires explicit cursor and color
    *       settings through `scursor()`. Text rendering via sprites provides per-pixel
    *       precision and supports depth sorting.
+   *
+   * @warning Text neither wraps nor clips: each glyph advances the cursor 8 pixels, and
+   *          any character landing past the right edge of the screen is drawn off-screen
+   *          and silently lost — the string simply appears truncated. The width that
+   *          matters is the *formatted* one, so count what `%d`/`%s` expand to, not the
+   *          length of the format string.
    *
    * @see scursor()
    */
@@ -909,6 +931,13 @@ namespace pico8 {
    * @note This function is designed for background rendering, closely mimicking
    *       PICO-8's `cursor()`. Background text persists without requiring
    *       continuous updates.
+   *
+   * @note The unit is tiles because this layer writes into the 8x8 background tilemap
+   *       (and because PICO-8's `cursor()` is the model). The sprite text layer is not
+   *       bound to the tile grid, so its `scursor()` is in PIXELS: `cursor(2, 3)` puts
+   *       text where `scursor(16, 24)` would.
+   *
+   * @see scursor()
    */
   const BgCursor& cursor(int x = 0, int y = 0, BgPal pal = BG_PAL_CURRENT);
 
