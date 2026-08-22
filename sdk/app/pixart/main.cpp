@@ -1,14 +1,16 @@
 // PixArt — BEEP-8 pixel art editor (standalone .b8 app)
 //
-// 128x128 canvas locked to the PICO-8 16-color palette. Two view modes:
-//   - PIXEL:    a 16x16 window zoomed 8x (each logical pixel = an 8x8 dot),
-//               panned over the full canvas; this is where you draw.
-//   - OVERVIEW: the whole 128x128 canvas at 1:1, view-only. A tap or drag moves
-//               the viewport box (snapped to 16px tiles). Return with View btn.
-// Toolbar (three rows): row A = Pen / Hand / Eyedropper / Fill / Undo / Redo;
-//   row B = Copy / Paste / Cut / View / Grid / Help;
+// 128x128 canvas locked to the PICO-8 16-color palette. Two view modes,
+// switched with the exclusive 8x/1x zoom buttons (row A, right):
+//   - PIXEL:    "8x" - a 16x16 window zoomed 8x (each logical pixel = an 8x8
+//               dot), panned over the full canvas; this is where you draw.
+//   - OVERVIEW: "1x" - the whole 128x128 canvas at 1:1, view-only. A tap or
+//               drag moves the viewport box (snapped to 16px tiles).
+// Toolbar (four rows): row A = Pen / Hand / Eyedropper / Fill ... 8x / 1x;
+//   row B = Copy / Paste / Cut ... Grid / Help;
 //   row C = Flip-H / Flip-V / Mirror ... plus, right-aligned across rows C and D,
-//   a boxed 2x2 transfer block: [Save Load] over [Download Import].
+//   a boxed 2x2 transfer block: [Save Load] over [Download Import];
+//   row D = Undo / Redo ... [Download Import] (see above).
 // Undo/Redo keep up to UNDO_MAX steps. Cut/Copy/Paste act on the current 16x16
 // viewport tile in OVERVIEW mode; the two flips mirror it in either mode (the
 // visible slice in PIXEL, the white box in OVERVIEW). Mirror is a persistent
@@ -139,15 +141,17 @@ static constexpr int HOST_POLL      = 15;     // idle status polls, 4x/second
 static constexpr int HOST_SYNC      = 30;     // push edits back 0.5s after the last one
 
 // toolbar button ids. Screen positions come from btnPos(); the four rows are:
-//   A: [Pen Hand Eye Fill] (left) ...  [Undo Redo]     (right, edge-aligned)
-//   B: [Copy Paste Cut]   (left)  ...  [View Grid Help] (right, edge-aligned)
+//   A: [Pen Hand Eye Fill] (left) ...  [8x 1x]          (right, edge-aligned)
+//   B: [Copy Paste Cut]   (left)  ...  [Grid Help]       (right, edge-aligned)
 //   C: [FlipH FlipV Mirror] (left) ...  [Save Load]     (right, edge-aligned)
-//   D:                          ...      [DL  Import]   (right, edge-aligned)
+//   D: [Undo Redo]         (left) ...  [DL  Import]     (right, edge-aligned)
 // Rows C/D right form one 2x2 transfer block, boxed together on screen:
 // row C is the cloud slot, row D is a local file; the left column stores (out),
 // the right column retrieves (in). The icons encode the same two axes.
+// 8x/1x (row A, right) are a mutually-exclusive pair, boxed together like the
+// Pen/Hand/Eye/Fill tool group: 8x selects PIXEL mode, 1x selects OVERVIEW.
 enum Btn { B_PEN = 0, B_HAND, B_EYE, B_UNDO, B_REDO,
-           B_VIEW, B_GRID, B_CUT, B_COPY, B_PASTE, B_HELP,
+           B_ZOOM8, B_ZOOM1, B_GRID, B_CUT, B_COPY, B_PASTE, B_HELP,
            B_FLIPH, B_FLIPV, B_MIRROR, B_FILL, B_SAVE, B_LOAD, B_DL,
            B_IMPORT, B_N };
 
@@ -165,12 +169,11 @@ static void btnPos(int id, int& x, int& y){
     case B_HAND:  x = 1 * PITCH;             y = BARA_Y; break;
     case B_EYE:   x = 2 * PITCH;             y = BARA_Y; break;
     case B_FILL:  x = 3 * PITCH;             y = BARA_Y; break;
-    case B_UNDO:  x = SCRW - ICON - PITCH;   y = BARA_Y; break;
-    case B_REDO:  x = SCRW - ICON;           y = BARA_Y; break;
+    case B_ZOOM8: x = SCRW - ICON - PITCH;   y = BARA_Y; break;
+    case B_ZOOM1: x = SCRW - ICON;           y = BARA_Y; break;
     case B_COPY:  x = 0 * PITCH;             y = BARB_Y; break;
     case B_PASTE: x = 1 * PITCH;             y = BARB_Y; break;
     case B_CUT:   x = 2 * PITCH;             y = BARB_Y; break;
-    case B_VIEW:  x = SCRW - ICON - 2*PITCH; y = BARB_Y; break;
     case B_GRID:  x = SCRW - ICON - PITCH;   y = BARB_Y; break;
     case B_HELP:  x = SCRW - ICON;           y = BARB_Y; break;
     case B_FLIPH: x = 0 * PITCH;             y = BARC_Y; break;
@@ -179,6 +182,8 @@ static void btnPos(int id, int& x, int& y){
     // transfer block: [Save Load] over [DL Import], right-aligned (see enum Btn)
     case B_SAVE:  x = SCRW - ICON - PITCH;   y = BARC_Y; break;
     case B_LOAD:  x = SCRW - ICON;           y = BARC_Y; break;
+    case B_UNDO:  x = 0 * PITCH;             y = BARD_Y; break;
+    case B_REDO:  x = 1 * PITCH;             y = BARD_Y; break;
     case B_DL:    x = SCRW - ICON - PITCH;   y = BARD_Y; break;
     case B_IMPORT:x = SCRW - ICON;           y = BARD_Y; break;
     default:      x = 0;                     y = 0;      break;
@@ -212,11 +217,16 @@ static const uint16_t kIcon[B_N][16] = {
     0b0000000001111100,0b0000000001111110,0b0011111111111110,0b0011111111111111,
     0b0011111111111110,0b0000000001111110,0b0000000001111100,0b0000000001111000,
     0b0000000001110000,0b0000000001100000,0b0000000001000000,0b0000000000000000 },
-  { // B_VIEW : magnifying glass (hollow lens upper-left, handle to lower-right)
-    0b0000011111000000,0b0000100000100000,0b0001000000010000,0b0001000000010000,
-    0b0001000000010000,0b0001000000010000,0b0001000000010000,0b0000100000100000,
-    0b0000011111100000,0b0000000000110000,0b0000000000011000,0b0000000000001100,
-    0b0000000000000110,0b0000000000000011,0b0000000000000000,0b0000000000000000 },
+  { // B_ZOOM8 : "8X" - PIXEL mode (8x zoomed pixel edit)
+    0b0000000000000000,0b0000000000000000,0b0000000000000000,0b0011110010000010,
+    0b0100001001000100,0b0100001001000100,0b0100001000101000,0b0011110000101000,
+    0b0011110000010000,0b0100001000101000,0b0100001000101000,0b0100001001000100,
+    0b0100001001000100,0b0011110010000010,0b0000000000000000,0b0000000000000000 },
+  { // B_ZOOM1 : "1X" - OVERVIEW mode (whole canvas at 1:1)
+    0b0000000000000000,0b0000000000000000,0b0000000000000000,0b0001100010000010,
+    0b0011100001000100,0b0001100001000100,0b0001100000101000,0b0001100000101000,
+    0b0001100000010000,0b0001100000101000,0b0001100000101000,0b0001100001000100,
+    0b0001100001000100,0b0111111010000010,0b0000000000000000,0b0000000000000000 },
   { // B_GRID : tic-tac-toe grid
     0b0000010000100000,0b0000010000100000,0b0000010000100000,0b0000010000100000,
     0b0000010000100000,0b1111111111111111,0b0000010000100000,0b0000010000100000,
@@ -660,7 +670,8 @@ class PixArt : public Pico8 {
       case B_PEN: case B_HAND: case B_EYE: case B_FILL: tool = btn; break;
       case B_UNDO:  doUndo(); break;
       case B_REDO:  doRedo(); break;
-      case B_VIEW:  overview = !overview; break;
+      case B_ZOOM8: overview = false; break;          // 8x pixel-edit mode
+      case B_ZOOM1: overview = true;  break;           // 1x whole-canvas overview
       case B_GRID:  grid = !grid; break;
       case B_CUT:   fireCut();   break;               // cut/copy/paste = overview only
       case B_COPY:  fireCopy();  break;
@@ -899,8 +910,10 @@ class PixArt : public Pico8 {
         case B_FILL:  fg = overview ? LIGHT_GREY : ((id == tool) ? BLACK : LIGHT_GREY); break;
         case B_UNDO:  if (uCount == 0)               fg = LIGHT_GREY; break;
         case B_REDO:  if (rCount == 0)               fg = LIGHT_GREY; break;
-        // View (magnifier): black while NOT in overview (tap to zoom out), grey once in it.
-        case B_VIEW:  if (overview)                  fg = LIGHT_GREY; break;
+        // 8x/1x: exclusive pair, same convention as the tool trio -- the active
+        // zoom mode shows black, the other grey.
+        case B_ZOOM8: fg = overview ? LIGHT_GREY : BLACK; break;
+        case B_ZOOM1: fg = overview ? BLACK : LIGHT_GREY; break;
         // Grid: ON = black, OFF = light grey (toggle indicated by icon color).
         case B_GRID:  if (!grid)                     fg = LIGHT_GREY; break;
         case B_CUT:   if (!overview)                 fg = LIGHT_GREY; break;  // overview only
@@ -929,6 +942,9 @@ class PixArt : public Pico8 {
     // button panels so its left edge stays visible at column 0). Top edge nudged
     // up 1px (BARA_Y-2) for a touch more breathing room above the icons.
     rect(0, BARA_Y - 2, 3 * PITCH + ICON + 1, BARA_Y + ICON + 1, LIGHT_GREY);
+    // light-grey box grouping the 8x/1x zoom pair (same mutually-exclusive
+    // convention as the tool-trio box above, right-aligned instead of left).
+    rect(SCRW - ICON - PITCH - 2, BARA_Y - 2, SCRW, BARA_Y + ICON + 1, LIGHT_GREY);
     // light-grey box grouping the 2x2 transfer block (cloud row over file row).
     // rect() is exclusive like rectfill(), so its right/bottom edges land on
     // columns/rows x1-1 / y1-1: passing SCRW/SCRH puts them on the last
