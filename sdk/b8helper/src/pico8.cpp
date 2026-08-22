@@ -871,22 +871,19 @@ void sprint(int x, int y, Color color, std::string_view format, ...){
   va_end(args);
 }
 
-static  void  get_bgcursor_info( BgCursor& dest ){
-  bgprint::Info info;
-  if( bgprint::GetInfo(_fp_bgprint,info) < 0 ) return;
-
-  dest.x = info._x_locate;
-  dest.y = info._y_locate;
-  dest.pal = static_cast< BgPal >( info._pal );
-}
-
 const BgCursor& cursor(int x, int y, BgPal pal ){
   if( !_fp_bgprint ) return  _bg_cursor_prev;
 
-  get_bgcursor_info( _bg_cursor_prev );
-  bgprint::Locate(_fp_bgprint,x,y);
-  if( pal != BG_PAL_CURRENT ) bgprint::Pal( _fp_bgprint , static_cast<u8>( pal ) );
-  return  _bg_cursor_prev; 
+  // Read-and-move in one ioctl rather than GetInfo() + an "\e[y;xH\e[Nq"
+  // sequence: apps that redraw a screenful of background text issue one of
+  // these per line, and the escape round trip alone would cost them a frame.
+  bgprint::Info prev;
+  if( 0 == bgprint::XchgCursor(_fp_bgprint,x,y,static_cast<u8>( pal ),prev) ){
+    _bg_cursor_prev.x   = prev._x_locate;
+    _bg_cursor_prev.y   = prev._y_locate;
+    _bg_cursor_prev.pal = static_cast< BgPal >( prev._pal );
+  }
+  return  _bg_cursor_prev;
 }
 
 void print(std::string_view format, ...){

@@ -88,6 +88,11 @@ static ssize_t bgprint_write(File* filep,const char *buffer, size_t len) {
   const u16 xmask = wt-1;
   const u16 ymask = ht-1;
 
+  // Loop-invariant, and these are out-of-line calls -- hoisting them saves two
+  // calls per character printed.
+  const u8 fnt_xtile = fontdata::dstxtile();
+  const u8 fnt_ytile = fontdata::dstytile();
+
   for( ; nn<len ; ++nn ){
     const char character = buffer[ nn ];
     EscapeOut eout = dp->_esc_decoder.Stream( (s32)character );
@@ -117,8 +122,8 @@ static ssize_t bgprint_write(File* filep,const char *buffer, size_t len) {
         if( dp->_x_locate < wt ){
           b8PpuBgTile* tile = &dp->_ctx.cpuaddr[ wt * yt + xt ];
           tile->PAL = dp->_EscapePAL;
-          tile->XTILE = fontdata::dstxtile() + (ascii&15);
-          tile->YTILE = fontdata::dstytile() + (ascii>>4);
+          tile->XTILE = fnt_xtile + (ascii&15);
+          tile->YTILE = fnt_ytile + (ascii>>4);
         }
 
         dp->_x_locate++;
@@ -176,6 +181,21 @@ int bgprint_ioctl( File* filep, unsigned int cmd, void* arg) {
       info->_x_locate = dp->_x_locate;
       info->_y_locate = dp->_y_locate;
       info->_pal = static_cast< u8 >( dp->_EscapePAL );
+    }break;
+    case bgprint::XCHG_CURSOR:{
+      // Same state change an "\e[y;xH\e[Nq" sequence would produce, without
+      // going through the ANSI encoder/decoder for it.
+      bgprint::XchgCursorArg* xc = static_cast< bgprint::XchgCursorArg* >( arg );
+      if (!xc) {
+        set_errno(EINVAL);
+        return -1;
+      }
+      xc->_prev._x_locate = dp->_x_locate;
+      xc->_prev._y_locate = dp->_y_locate;
+      xc->_prev._pal      = static_cast< u8 >( dp->_EscapePAL );
+      dp->_x_locate = xc->_x_locate;
+      dp->_y_locate = xc->_y_locate;
+      if( xc->_pal < 4 ) dp->_EscapePAL = (EscapePAL)xc->_pal;
     }break;
   }
   return 0;
@@ -267,14 +287,44 @@ void  Export(
   ioctl(fd, bgprint::EXPORT_PPU_CMD , &epc );
 }
 
+// The escape sequences below are built by hand instead of with fprintf().
+// newlib's formatted output costs ~1900 CPU cycles per call on the 4 MHz core,
+// so a screenful of pico8::cursor() calls (one Locate each) alone burns a whole
+// frame budget. Emitting the digits directly is roughly ten times cheaper, and
+// these sequences only ever need a plain signed decimal.
+//
+// The finished sequence goes out through putc()-style inline stores rather than fwrite(): this
+// stream is always fully buffered (see Open()), so that is a couple of
+// instructions per character, where fwrite() pays newlib's whole vector-write
+// setup -- ~500 cycles -- for a dozen bytes.
+static void put_buf( FILE* fp_, const char* src, size_t len ){
+  for( size_t ii=0 ; ii<len ; ++ii ) __sputc_r( _REENT, src[ ii ], fp_ );
+}
+
+static char* put_dec( char* dst, int val ){
+  if( val < 0 ){ *dst++ = '-'; val = -val; }
+  char rev[ 12 ];
+  int nn = 0;
+  do { rev[ nn++ ] = (char)( '0' + ( val % 10 ) ); val /= 10; } while( val );
+  while( nn ) *dst++ = rev[ --nn ];
+  return dst;
+}
+
 void  Locate(FILE* fp_ ,s16 lx_,s16 ly_ ){
-  fprintf( fp_, "\e[%d;%dH",ly_,lx_);
+  char buf[ 24 ];
+  char* pp = buf;
+  *pp++ = '\e'; *pp++ = '[';
+  pp = put_dec( pp, ly_ );
+  *pp++ = ';';
+  pp = put_dec( pp, lx_ );
+  *pp++ = 'H';
+  put_buf( fp_, buf, (size_t)( pp - buf ) );
 }
 
 void Pal(FILE* fp_, u8 pal_ ){
   if( pal_ >= 4 ) return;
-  static const char* tbl[4] = { "\e[0q", "\e[1q", "\e[2q", "\e[3q" };
-  fputs( tbl[ pal_ ] , fp_ );
+  static const char tbl[4][4] = { {'\e','[','0','q'}, {'\e','[','1','q'}, {'\e','[','2','q'}, {'\e','[','3','q'} };
+  put_buf( fp_, tbl[ pal_ ], 4 );
 }
 
 int GetInfo(FILE* fp_ ,Info& dest ){
@@ -286,6 +336,26 @@ int GetInfo(FILE* fp_ ,Info& dest ){
   int ret = ioctl(fd, bgprint::GET_INFO, &dest );
   if (ret == -1)  return -3;
 
+  return 0;
+}
+
+int XchgCursor(FILE* fp_, s16 lx_, s16 ly_, u8 pal_, Info& prev_ ){
+  if( ! fp_ ) return -1;
+  int fd = fileno( fp_ );
+  if (fd == -1) return -2;
+
+  XchgCursorArg xc;
+  xc._x_locate = lx_;
+  xc._y_locate = ly_;
+  xc._pal      = pal_;
+
+  // Everything already printed has to reach the tilemap before the cursor
+  // moves out from under it.
+  fflush( fp_ );
+  int ret = ioctl(fd, bgprint::XCHG_CURSOR, &xc );
+  if (ret == -1)  return -3;
+
+  prev_ = xc._prev;
   return 0;
 }
 

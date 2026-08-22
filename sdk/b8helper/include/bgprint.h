@@ -40,7 +40,8 @@ namespace bgprint {
     SET_SLOT_CONTEXT,
     SET_UV_SCROLL,
     EXPORT_PPU_CMD,
-    GET_INFO
+    GET_INFO,
+    XCHG_CURSOR
   };
 
   enum EnCh {
@@ -146,10 +147,40 @@ namespace bgprint {
 
   void  Locate(FILE* fp_ ,s16 lx_,s16 ly_ );
   void  Pal(FILE* fp_, u8 pal_ );
+
   struct Info {
     s16 _x_locate = 0;   ///< X location.
     s16 _y_locate = 0;   ///< Y location.
     u8  _pal;
   };
   int GetInfo(FILE* fp_, Info& dest);
+
+  /**
+   * \brief Read the cursor and move it, in one round trip to the driver.
+   *
+   * GetInfo() + Locate() + Pal() done as a single ioctl: the pending stream is
+   * flushed (so the move stays ordered against text already printed), the
+   * previous cursor state is copied into \a prev_, and the new position and
+   * palette are stored straight into the driver.
+   *
+   * This is the cheap path for a caller that just wants to move the cursor.
+   * The Locate()/Pal() escape sequences have to be formatted by the writer and
+   * then parsed back a character at a time by the driver's ANSI decoder, which
+   * on the 4 MHz core costs the better part of 2000 cycles per cursor move --
+   * enough that a full-screen redraw of background text overruns its frame.
+   *
+   * \param pal_  New palette 0..3; pass >= 4 to leave the palette unchanged.
+   * \param prev_ Receives the cursor state as it was before the move.
+   */
+  int XchgCursor(FILE* fp_, s16 lx_, s16 ly_, u8 pal_, Info& prev_ );
+
+  /**
+   * \brief ioctl payload for XCHG_CURSOR. Use XchgCursor() rather than this.
+   */
+  struct XchgCursorArg {
+    s16  _x_locate = 0;  ///< in: new X location.
+    s16  _y_locate = 0;  ///< in: new Y location.
+    u8   _pal = 0xff;    ///< in: new palette, >= 4 leaves it alone.
+    Info _prev;          ///< out: cursor state before the move.
+  };
 }

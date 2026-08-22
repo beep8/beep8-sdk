@@ -9,12 +9,15 @@
 // glyph every frame. A 22-row list is ~180 glyphs, which is real money on a
 // 4 MHz budget -- see the FPS/WORK readout this app prints.
 //
-// The list is only re-written when something actually changes; the stats line
-// is the only thing touched on a normal frame.
+// The list is only re-written when something actually changes, and moving the
+// selection re-writes just the two rows that changed rather than the whole
+// screen: a full 30-line repaint costs ~66k cycles, a full frame's budget, so
+// doing one per keypress visibly drops a frame (it used to be ~137k, two
+// frames, before bgprint's cursor path was made cheaper).
 #include <pico8.h>
 #include <sound.h>
-#include <b8/dwt.h>
-#include <b8/sys.h>
+#include <sys/time.h>
+#include <b8/syscall.h>
 
 using namespace pico8;
 
@@ -111,37 +114,52 @@ static const int PAL_HELP  = 3;       // WHITE -> LAVENDER
 
 static const int STAT_WIN  = 30;      // frames averaged per stats update
 
+static const u64 NS_PER_SEC   = 1000000000ULL;
+static const u64 NS_PER_FRAME = NS_PER_SEC / 60;
+
+// Wall clock in nanoseconds.
+//
+// NOTE: B8_DWT_CYCCNT looks like the obvious thing to use here and is not
+// usable -- b8os' scheduler calls ArchDriverGetCycleAndClear() and ZEROES the
+// DWT counter on every scheduling event (os.c, _b8OsProcessScheduler), so
+// a difference taken across one reads garbage. clock_gettime() reads the total
+// the OS accumulates from exactly that counter, and is monotonic.
+static u64 now_ns(){
+  struct timespec ts;
+  clock_gettime( CLOCK_MONOTONIC, &ts );
+  return (u64)ts.tv_sec * NS_PER_SEC + (u64)ts.tv_nsec;
+}
+
 class App : public Pico8 {
 public:
   int  cur    = 0;
   int  top    = 0;
   int  bgmIdx = 0;
-  bool dirty  = true;
+  bool dirty  = true;                 // header/BGM line changed: repaint everything
   bool first_draw = true;
 
-  // --- cycle accounting (see the note at the top of the file) ---
-  u32 clk        = 4000000;
-  u32 budget     = 66666;             // cycles available per 60Hz frame
-  u32 t_enter    = 0;                 // CYCCNT at the top of this _update()
-  u32 t_prev     = 0;                 // ... of the previous one
-  u32 sum_work   = 0;                 // cycles spent in _update()+_draw()
-  u32 sum_frame  = 0;                 // cycles per whole frame period
+  // What the tilemap currently shows, so _draw() can tell a selection move
+  // (two rows to repaint) from a scroll or a BGM change (the whole screen).
+  int  drawn_cur = -1;
+  int  drawn_top = -1;
+
+  // --- frame time accounting (see the note on now_ns() above) ---
+  u64 t_enter    = 0;                 // clock at the top of this _update()
+  u64 t_prev     = 0;                 // ... of the previous one
+  u64 sum_work   = 0;                 // ns spent in _update()+_draw()
+  u64 sum_frame  = 0;                 // ns per whole frame period
   int nsample    = 0;
   int fps        = 0;
   int workpct    = 0;
 
   void _init() override {
-    B8_DWT_CTRL = 1;                  // the cycle counter does not run until this is set
-    clk    = b8SysGetCpuClock();
-    budget = clk / 60;
-
     // NOTE: pal() is not called here. It emits a PPU command, so like every
     // drawing call it is only legal inside _draw() -- calling it from _init()
     // raises NOT_DURING_DRAWING and the app dies before the first frame. The
     // palette itself persists once written, so _draw() sets it up exactly once
     // (see first_draw below), the same way pakupaku does it.
     playBgm();
-    t_prev = B8_DWT_CYCCNT;
+    t_prev = now_ns();
   }
 
   void play(){ sndSfx( (SndSfx)cur ); }
@@ -159,19 +177,21 @@ public:
   }
 
   void _update() override {
-    t_enter    = B8_DWT_CYCCNT;
+    t_enter    = now_ns();
     sum_frame += t_enter - t_prev;
     t_prev     = t_enter;
 
-    if( btnp(BUTTON_UP)   ){ cur = ( cur + SFX_COUNT - 1 ) % SFX_COUNT; scrollToCur(); dirty = true; }
-    if( btnp(BUTTON_DOWN) ){ cur = ( cur + 1 ) % SFX_COUNT;             scrollToCur(); dirty = true; }
+    // Moving the selection does not set dirty: _draw() notices cur changed and
+    // repaints only the rows involved.
+    if( btnp(BUTTON_UP)   ){ cur = ( cur + SFX_COUNT - 1 ) % SFX_COUNT; scrollToCur(); }
+    if( btnp(BUTTON_DOWN) ){ cur = ( cur + 1 ) % SFX_COUNT;             scrollToCur(); }
     if( btnp(BUTTON_O)    ) play();
 
     if( btnp(BUTTON_MOUSE_LEFT) ){
       // Background text is on the tile grid, so a tap maps to a row by /8.
       const int row = ( (int)mousey() ) / 8 - LIST_TOP;
       if( row >= 0 && row < ROWS && top + row < SFX_COUNT ){
-        cur = top + row; dirty = true;
+        cur = top + row;
       }
       play();
     }
@@ -186,11 +206,24 @@ public:
     if( btnp(BUTTON_RIGHT) ){ bgmIdx = ( bgmIdx + 1 )              % BGM_COUNT; if( sndBgmIsPlaying() ) playBgm(); dirty = true; }
   }
 
+  // One list row, by preset index. The trailing blanks matter: rows are
+  // repainted in place now, so a shorter name has to erase the longer one.
+  void drawRow( int i ){
+    if( i < top || i >= top + ROWS || i < 0 || i >= SFX_COUNT ) return;
+    const bool sel = ( i == cur );
+    cursor( 1, LIST_TOP + i - top, sel ? (BgPal)PAL_SEL : BG_PAL_0 );
+    print( sel ? ">%s" : " %s", SFX_NAME[i] );
+  }
+
+  void drawTitle(){
+    cursor( 1, ROW_TITLE, (BgPal)PAL_HEAD );
+    print( "SFX %d/%d ", cur + 1, (int)SFX_COUNT );
+  }
+
   void drawList(){
     print( "\e[2J" );                 // clear the whole background text plane
 
-    cursor( 1, ROW_TITLE, (BgPal)PAL_HEAD );
-    print( "SFX %d/%d", cur + 1, (int)SFX_COUNT );
+    drawTitle();
 
     cursor( 1, ROW_BGM, (BgPal)PAL_HEAD );
     print( "%d/%d %s", bgmIdx + 1, BGM_COUNT, BGM_DEFS[bgmIdx].name );
@@ -198,13 +231,7 @@ public:
     cursor( 1, ROW_BGMST, (BgPal)PAL_HEAD );
     print( sndBgmIsPlaying() ? "BGM ON " : "BGM OFF" );
 
-    for( int r = 0 ; r < ROWS ; ++r ){
-      const int i = top + r;
-      if( i >= SFX_COUNT ) break;
-      const bool sel = ( i == cur );
-      cursor( 1, LIST_TOP + r, sel ? (BgPal)PAL_SEL : BG_PAL_0 );
-      print( sel ? ">%s" : " %s", SFX_NAME[i] );
-    }
+    for( int r = 0 ; r < ROWS ; ++r ) drawRow( top + r );
 
     if( top > 0 )                 { cursor( 13, LIST_TOP,        BG_PAL_0 ); print( "^" ); }
     if( top + ROWS < SFX_COUNT )  { cursor( 13, LIST_TOP+ROWS-1, BG_PAL_0 ); print( "v" ); }
@@ -225,20 +252,33 @@ public:
       first_draw = false;
     }
 
-    if( dirty ){ drawList(); dirty = false; }
+    if( dirty || top != drawn_top ){
+      // Something structural changed (BGM selection, or the window scrolled):
+      // the whole plane has to be re-written.
+      drawList();
+      dirty = false;
+    } else if( cur != drawn_cur ){
+      // Only the highlight moved, and it moved within the same window: the
+      // two rows that changed colour plus the counter is all that is stale.
+      drawTitle();
+      drawRow( drawn_cur );
+      drawRow( cur );
+    }
+    drawn_cur = cur;
+    drawn_top = top;
 
     if( ++nsample >= STAT_WIN ){
-      // fps  = how many frame periods fit in a second of CPU cycles
-      // work = share of one frame's cycle budget spent in _update()+_draw()
-      fps     = sum_frame ? (int)( (u32)STAT_WIN * clk / sum_frame ) : 0;
-      workpct = (int)( sum_work / (u32)STAT_WIN * 100 / budget );
+      // fps  = how many frame periods fit in a second
+      // work = share of one 60Hz frame's time spent in _update()+_draw()
+      fps     = sum_frame ? (int)( (u64)STAT_WIN * NS_PER_SEC / sum_frame ) : 0;
+      workpct = (int)( sum_work * 100 / ( (u64)STAT_WIN * NS_PER_FRAME ) );
       cursor( 1, ROW_STATS, (BgPal)PAL_HEAD );
       print( "%dfps W%d%%   ", fps, workpct );
       sum_frame = sum_work = 0;
       nsample   = 0;
     }
 
-    sum_work += B8_DWT_CYCCNT - t_enter;
+    sum_work += now_ns() - t_enter;
   }
 };
 

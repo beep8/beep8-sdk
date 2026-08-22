@@ -83,7 +83,10 @@ EscapeOut& CEscapeSeqDecoder::Stream( s32 code_ ){
 
 	switch( _impl->_EscState ) {
     case	ES_IDLE:{
-      _impl->_Str_0x5b.clear();
+      // This is the path every ordinary printed character takes, so keep the
+      // out-of-line string call off it -- the buffer is almost always already
+      // empty here.
+      if( ! _impl->_Str_0x5b.empty() ) _impl->_Str_0x5b.clear();
       eout._code = code_;
       eout._Ope = ESO_ONE_CHAR;
     }break;
@@ -143,8 +146,14 @@ EscapeOut& CEscapeSeqDecoder::Stream( s32 code_ ){
           Esc[3q 	select PAL3
         */
         case	'q':{
-          char* endptr;
-          int pal = strtol(_impl->_Str_0x5b.c_str(), &endptr,0);
+          // The parameter is a single palette digit, so read it directly --
+          // strtol() is a surprisingly expensive libc call to make on the
+          // 4 MHz core for something this hot.
+          int pal = 0;
+          for( char cc : _impl->_Str_0x5b ){
+            if( cc < '0' || cc > '9' ) break;
+            pal = pal * 10 + ( cc - '0' );
+          }
           _ASSERT( pal>=0 && pal<= 3, "INVALID PAL");
           eout._Ope = ESO_SEL_PAL;
           eout._EscapePAL = (EscapePAL)pal;

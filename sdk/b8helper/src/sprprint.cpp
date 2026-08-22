@@ -302,19 +302,51 @@ FILE* Open( EnCh ch_, sprprint::Context& ctx ){
   return fp;
 }
 
+// See the same helper in bgprint.cpp: newlib's fprintf() costs ~1900 CPU cycles
+// per call on the 4 MHz core, and scursor() issues two of them, so these short
+// escape sequences are assembled by hand instead.
+static char* put_dec( char* dst, int val ){
+  if( val < 0 ){ *dst++ = '-'; val = -val; }
+  char rev[ 12 ];
+  int nn = 0;
+  do { rev[ nn++ ] = (char)( '0' + ( val % 10 ) ); val /= 10; } while( val );
+  while( nn ) *dst++ = rev[ --nn ];
+  return dst;
+}
+
 void  Locate(FILE* fp_ ,s16 lx_,s16 ly_,u16 otz_ ){
   if( ! fp_ ) return;
-  fprintf( fp_, "\e[%d;%dH\e[%dz",ly_,lx_,otz_);
+  char buf[ 32 ];
+  char* pp = buf;
+  *pp++ = '\e'; *pp++ = '[';
+  pp = put_dec( pp, ly_ );
+  *pp++ = ';';
+  pp = put_dec( pp, lx_ );
+  *pp++ = 'H';
+  *pp++ = '\e'; *pp++ = '[';
+  pp = put_dec( pp, otz_ );
+  *pp++ = 'z';
+  fwrite( buf, 1, (size_t)( pp - buf ), fp_ );
 }
 
 void  LocateZ(FILE* fp_ ,u16 otz_ ){
   if( ! fp_ ) return;
-  fprintf( fp_, "\e[%dz" , otz_ );
+  char buf[ 16 ];
+  char* pp = buf;
+  *pp++ = '\e'; *pp++ = '[';
+  pp = put_dec( pp, otz_ );
+  *pp++ = 'z';
+  fwrite( buf, 1, (size_t)( pp - buf ), fp_ );
 }
 
 void Color(FILE* fp_, b8PpuColor b8col_ ){
   if( ! fp_ ) return;
-  fprintf(fp_, "\e[%dm",50+b8col_);
+  char buf[ 16 ];
+  char* pp = buf;
+  *pp++ = '\e'; *pp++ = '[';
+  pp = put_dec( pp, 50 + (int)b8col_ );
+  *pp++ = 'm';
+  fwrite( buf, 1, (size_t)( pp - buf ), fp_ );
 }
 
 int GetInfo(FILE* fp_ ,Info& dest ){
