@@ -17,10 +17,11 @@
  *
  * Nothing needs to be initialised and nothing needs to be ticked. The first
  * call that actually asks for a sound resets the APU and starts a small
- * sequencer thread; from then on the music is clocked by the APU's own sync
- * interrupt, independent of the game loop, so a heavy frame cannot drag the
- * tempo with it. A game that never calls into this header never touches the
- * APU and never spawns the thread.
+ * sequencer thread; from then on the music is clocked by the APU itself, one
+ * tick per sync interrupt at 120 Hz, with no connection to the game loop at
+ * all — so a heavy frame cannot drag the tempo with it, and the frame rate
+ * does not have to be 60 to keep time. A game that never calls into this
+ * header never touches the APU and never spawns the thread.
  *
  * That thread is the only other thread in the picture, and every entry point
  * below is safe to call while it runs; you do not need a lock of your own.
@@ -173,18 +174,3 @@ void sndSfxVolume( int pct );
 
 /** @brief Stop everything — music and all sound effects. */
 void sndStopAll();
-
-/**
- * @brief Advance the sequencer by one frame. Games do not need this.
- *
- * The sequencer has run on its own thread, clocked off @c B8_IRQ_APUS, since
- * the frame-driven version was found to wobble the tempo whenever a frame ran
- * long. While that thread is up this function does nothing at all, so calling
- * it cannot double the tempo.
- *
- * It stays in the API for the one case where the thread could not be created
- * (a program that has already used all 32 of its threads — @ref sndSfx and
- * friends say so on stderr). Such a program must call this at 60 Hz to get any
- * sound at all.
- */
-void sndTick();
