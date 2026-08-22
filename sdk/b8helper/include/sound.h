@@ -15,10 +15,15 @@
  *   - @ref sndBgmPlay — background music written as MML text (the classic
  *     "t120 o4 l8 cdefg" note-string notation), up to 4 simultaneous tracks.
  *
- * Nothing needs to be initialised and nothing needs to be ticked: the sequencer
- * is advanced once per frame from inside @c pico8::Pico8::run(), and the APU is
- * reset lazily the first time you actually ask for a sound. A game that never
- * calls into this header never touches the APU at all.
+ * Nothing needs to be initialised and nothing needs to be ticked. The first
+ * call that actually asks for a sound resets the APU and starts a small
+ * sequencer thread; from then on the music is clocked by the APU's own sync
+ * interrupt, independent of the game loop, so a heavy frame cannot drag the
+ * tempo with it. A game that never calls into this header never touches the
+ * APU and never spawns the thread.
+ *
+ * That thread is the only other thread in the picture, and every entry point
+ * below is safe to call while it runs; you do not need a lock of your own.
  *
  * @code
  *   void _init() override {
@@ -170,15 +175,16 @@ void sndSfxVolume( int pct );
 void sndStopAll();
 
 /**
- * @brief Advance the sequencer by one frame.
+ * @brief Advance the sequencer by one frame. Games do not need this.
  *
- * Called automatically once per frame by @c pico8::Pico8::run(), so games never
- * need to call it. It only exists as public API for the non-pico8 case (a bare
- * b8lib program driving its own main loop), where it must be called at 60 Hz.
+ * The sequencer has run on its own thread, clocked off @c B8_IRQ_APUS, since
+ * the frame-driven version was found to wobble the tempo whenever a frame ran
+ * long. While that thread is up this function does nothing at all, so calling
+ * it cannot double the tempo.
  *
- * @note If music timing ever needs to be decoupled from the render frame rate,
- *       this is the single seam to move: a worker thread blocking on
- *       @c b8ApuSyncWait() (@c B8_IRQ_APUS) can drive it instead, with no change
- *       to any of the API above.
+ * It stays in the API for the one case where the thread could not be created
+ * (a program that has already used all 32 of its threads — @ref sndSfx and
+ * friends say so on stderr). Such a program must call this at 60 Hz to get any
+ * sound at all.
  */
 void sndTick();

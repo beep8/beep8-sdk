@@ -14,7 +14,6 @@
 #include <bit>
 #include <map>
 #include <bgprint.h>
-#include <sound.h>
 
 using namespace std;
 using namespace pico8;
@@ -337,7 +336,6 @@ void  Pico8::run(){
     hif_update();
     _update();
     ++_cnt_update;
-    sndTick();   // advance <sound.h>'s sequencer -- a no-op until a game asks for a sound
     if( has_error() ) break;
 
     b8PpuCmdSetBuff( &_ppu_cmd , _ppu_cmd_buff , sizeof( _ppu_cmd_buff ) );

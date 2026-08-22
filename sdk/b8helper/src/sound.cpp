@@ -17,9 +17,19 @@
  * MML is parsed lazily, straight off the caller's string, one note at a time.
  * That is why the strings must outlive playback (documented in sound.h): it
  * buys zero allocation and zero fixed size limit on a piece of music.
+ *
+ * The sequencer runs on its own thread (tick_thread), woken by the APU's own
+ * sync interrupt rather than by the game loop -- see ensure_init(). Everything
+ * below therefore runs on two threads: the game thread through the public API,
+ * and the tick thread through tick_locked(). g_lock serialises the two; the
+ * only globals read outside it are the ones marked volatile.
  */
 #include <sound.h>
 #include <b8/apu.h>
+#include <b8/pthread.h>
+#include <b8/semaphore.h>
+#include <b8/syscall.h>   // usleep
+#include <stdio.h>
 
 namespace {
 
@@ -38,13 +48,45 @@ const int MML_REP_DEPTH = 4;
 // Sub-frame timing resolution: one frame == TICK units.
 const int TICK = 256;
 
-bool g_inited      = false;
-int  g_bgm_vol_pct = 100;
-int  g_sfx_vol_pct = 100;
+// The APU raises B8_IRQ_APUS once per APU step, and the hardware steps at twice
+// the frame rate (200 samples of the 24kHz output per step). The sequencer
+// keeps its timebase in frames, so it wants every second interrupt.
+const int SYNCS_PER_TICK = 2;
+
+// Enough for parse_next() and one MMIO-poking tick; nothing here recurses.
+const int TICK_STACK = 0x800;
+
+// Set once by ensure_init(), before the tick thread that reads it exists, and
+// never cleared. Read unlocked by the entry points that must not create the
+// lock they would otherwise take.
+volatile bool g_inited = false;
+
+// Guards every global below plus the APU registers. Valid only once g_inited.
+sem_t g_lock;
+
+// Volume trims are a single aligned word written by the game thread and read by
+// the tick thread; on this single-core CPU that store is atomic, so they are the
+// one pair of globals deliberately left outside g_lock -- taking it would mean
+// two syscalls for what is a scale factor on the next note.
+volatile int g_bgm_vol_pct = 100;
+volatile int g_sfx_vol_pct = 100;
+
+// Likewise readable unlocked, for sndBgmIsPlaying().
+volatile bool g_bgm_on = false;
+
+// True once tick_thread is running, i.e. the sequencer has its own clock and a
+// manual sndTick() would only double the tempo. See sndTick().
+volatile bool g_threaded = false;
+
 int  g_tempo       = 120;
 bool g_bgm_loop    = true;
-bool g_bgm_on      = false;
 unsigned g_age     = 0;
+
+// RAII around g_lock. Only ever constructed once g_inited is true.
+struct Lock {
+  Lock()  { sem_wait( &g_lock ); }
+  ~Lock() { sem_post( &g_lock ); }
+};
 
 int clampi( int v, int lo, int hi ){ return v < lo ? lo : ( v > hi ? hi : v ); }
 
@@ -53,19 +95,64 @@ int lerpi( int a, int b, int i, int n ){
   return a + ( b - a ) * i / n;
 }
 
+void tick_locked();
+
+// The sequencer's clock. It deliberately does not run on the game loop: a frame
+// that overruns vsync -- one heavy _draw(), a cursor being dragged, a stall in
+// the browser -- would stretch every note in the bar with it, which is exactly
+// the tempo wobble this thread exists to remove. B8_IRQ_APUS instead comes from
+// the APU itself, one interrupt per 200 generated samples, so a tick is pinned
+// to a fixed amount of *audio*, whatever the renderer is doing.
+void* tick_thread( void* ){
+  // b8ApuReset() already armed the IRQ; ensure_init() muted it again and left
+  // switching it on to us, so that no backlog can pile up on the semaphore
+  // between the reset and this thread reaching its first wait.
+  B8_APU_INTCTRL = 1;
+
+  for(;;){
+    bool ok = true;
+    for( int i = 0 ; i < SYNCS_PER_TICK ; ++i )
+      if( b8ApuSyncWait() < 0 ) ok = false;
+
+    // Nothing recoverable can make the wait fail, but spinning on it at full
+    // tilt would take the CPU away from the game. Fall back to a frame's sleep.
+    if( !ok ){ usleep( 16666 ); continue; }
+
+    Lock lk;
+    tick_locked();
+  }
+  return 0;
+}
+
 // The APU is only ever touched once a game actually asks for a sound, so a
-// silent game behaves exactly as it did before this helper existed.
+// silent game behaves exactly as it did before this helper existed -- no APU
+// reset, no sync interrupt, and no tick thread.
+//
+// Called from the public API only, i.e. always on the game thread: the tick
+// thread does not exist until the tail of this function, and never calls in.
 void ensure_init(){
   if( g_inited ) return;
-  g_inited = true;
-  b8ApuReset();
-  // b8ApuReset() enables B8_IRQ_APUS so raw b8Apu* callers can use
-  // b8ApuSyncWait(), but this helper's sequencer is frame-driven (sndTick())
-  // and never waits on it. Left enabled, the IRQ's dedicated post-only thread
-  // (see b8SysSetupIrqWait()) saturates that semaphore after ~4.5 minutes
-  // (SEM_VALUE_MAX / 120Hz) and every step past that spams errcode=-139
-  // (EOVERFLOW) forever. Turn it back off since nothing here consumes it.
-  B8_APU_INTCTRL = 0;
+
+  b8ApuReset();        // enables B8_IRQ_APUS (and B8_APU_INTCTRL) as a side effect
+  B8_APU_INTCTRL = 0;  // ... which tick_thread turns back on once it is waiting
+
+  sem_init( &g_lock, 0, 1 );
+  g_inited = true;     // Lock is usable from here on, so the thread may start
+
+  pthread_attr_t attr;
+  pthread_attr_init( &attr );
+  pthread_attr_setstacksize( &attr, TICK_STACK );
+  pthread_attr_setdetachstate( &attr, PTHREAD_CREATE_DETACHED );
+
+  pthread_t pid;
+  if( pthread_create( &pid, &attr, tick_thread, 0 ) == 0 ){
+    g_threaded = true;
+  } else {
+    // Out of TCBs (32 per program). Nothing will advance the sequencer unless
+    // the program calls sndTick() itself, so say so rather than sounding like
+    // a broken APU.
+    fprintf( stderr, "sound: no thread for the sequencer; call sndTick() at 60Hz\n" );
+  }
 }
 
 // Noise volume is an attenuation shift (smaller = louder), so a percentage trim
@@ -428,8 +515,8 @@ void bgm_silence(){
   g_bgm_on = false;
 }
 
+// Caller holds g_lock, and has already run ensure_init().
 void bgm_start( const char* t0, const char* t1, const char* t2, const char* t3, bool loop ){
-  ensure_init();
   bgm_silence();
 
   g_bgm_loop = loop;
@@ -449,6 +536,19 @@ void bgm_start( const char* t0, const char* t1, const char* t2, const char* t3, 
   g_bgm_on = any;
 }
 
+// One sequencer step. Caller holds g_lock.
+void tick_locked(){
+  sfx_tick();
+
+  if( !g_bgm_on ) return;
+  bool any = false;
+  for( int i = 0 ; i < BGM_TRACKS ; ++i ){
+    track_advance( g_trk[i], i );
+    if( g_trk[i].active ) any = true;
+  }
+  if( !any ) g_bgm_on = false;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -461,6 +561,7 @@ void sndSfx( SndSfx id ){
   // compare rejects both an out-of-range value and a negative one cast in.
   if( (unsigned)id >= (unsigned)SFX_COUNT ) return;
   ensure_init();
+  Lock lk;
 
   const SfxDef* d = &SFX[ id ];
 
@@ -486,15 +587,20 @@ void sndSfx( SndSfx id ){
 }
 
 void sndBgmPlay( const char* t0, const char* t1, const char* t2, const char* t3 ){
+  ensure_init();
+  Lock lk;
   bgm_start( t0, t1, t2, t3, true );
 }
 
 void sndBgmPlayOnce( const char* t0, const char* t1, const char* t2, const char* t3 ){
+  ensure_init();
+  Lock lk;
   bgm_start( t0, t1, t2, t3, false );
 }
 
 void sndBgmStop(){
   if( !g_inited ) return;
+  Lock lk;
   bgm_silence();
 }
 
@@ -505,6 +611,7 @@ void sndSfxVolume( int pct ){ g_sfx_vol_pct = clampi( pct, 0, 100 ); }
 
 void sndStopAll(){
   if( !g_inited ) return;
+  Lock lk;
   bgm_silence();
   for( int i = 0 ; i < SFX_VOICES ; ++i )
     sfx_voice_stop( g_sfx[i], SFX_CH0 + (u32)i, false );
@@ -512,15 +619,9 @@ void sndStopAll(){
 }
 
 void sndTick(){
-  if( !g_inited ) return;
-
-  sfx_tick();
-
-  if( !g_bgm_on ) return;
-  bool any = false;
-  for( int i = 0 ; i < BGM_TRACKS ; ++i ){
-    track_advance( g_trk[i], i );
-    if( g_trk[i].active ) any = true;
-  }
-  if( !any ) g_bgm_on = false;
+  // The tick thread owns the clock whenever it is running; ticking again from
+  // the caller's loop would simply run the music at double speed.
+  if( !g_inited || g_threaded ) return;
+  Lock lk;
+  tick_locked();
 }
