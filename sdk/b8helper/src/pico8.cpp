@@ -69,64 +69,6 @@ return;
   fprintf(fp, "\e[51;70mDarkBlue/Black\n"); // 前景: Dark Blue, 背景: Black
 }
 
-static  void _test_fgetset(){  // TODO: remove
-  printf("Starting fset/fget tests...\n");
-
-  // テストケース1: 初期状態確認
-  printf("Test Case 1: Initial state\n");
-  assert(fget(10) == 0);  // スプライト10はフラグがすべて0
-  assert(fget(20) == 0);  // スプライト20もフラグがすべて0
-  assert(fget(10, 0) == 0);
-  assert(fget(10, 1) == 0);
-  
-  // テストケース2: フラグを個別に設定して取得
-  printf("Test Case 2: Set and get individual flags\n");
-  fset(10, 0, 1);  // スプライト10、フラグ0を1に
-  assert(fget(10, 0) == 1);
-  assert(fget(10) == 1);  // 全体のビットフィールドは 00000001
-
-  fset(10, 1, 1);  // フラグ1を1に
-  assert(fget(10, 1) == 1);
-  assert(fget(10) == 3);  // 全体のビットフィールドは 00000011
-
-  fset(10, 2, 1);  // フラグ2を1に
-  assert(fget(10, 2) == 1);
-  assert(fget(10) == 7);  // 全体のビットフィールドは 00000111
-
-  // テストケース3: フラグをクリアして取得
-  printf("Test Case 3: Clear individual flags\n");
-  fset(10, 1, 0);  // フラグ1をクリア
-  assert(fget(10, 1) == 0);
-  assert(fget(10) == 5);  // 全体のビットフィールドは 00000101
-
-  // テストケース4: 全フラグを一度に設定して取得
-  printf("Test Case 4: Set all flags at once\n");
-  fset(10, 0xff, 0b10101010);  // スプライト10の全フラグを10101010に設定
-  assert(fget(10) == 0b10101010);
-  assert(fget(10, 0) == 0);
-  assert(fget(10, 1) == 1);
-  assert(fget(10, 2) == 0);
-  assert(fget(10, 3) == 1);
-
-  // テストケース5: 異なるスプライトバンクでのテスト
-  printf("Test Case 5: Test with different sprite banks\n");
-  fset(10, 0, 1, 1);  // スプライトバンク1のスプライト10、フラグ0を1に設定
-  assert(fget(10, 0, 1) == 1);
-  assert(fget(10, 0, 0) == 0);  // デフォルトバンクでは影響なし
-
-  fset(10, 0xff, 0b11110000, 1);  // スプライトバンク1で全フラグを設定
-  assert(fget(10, 0, 1) == 0);
-  assert(fget(10, 4, 1) == 1);  // フラグ4が1
-
-  // テストケース6: エッジケースのテスト（フラグ範囲外を設定）
-  printf("Test Case 6: Out of range flag tests\n");
-  // この部分はassertでエラーハンドリングされるので実際のコード上ではエラーを防止
-  //fset(10, 8, 1);  // フラグ8は存在しない -> アサートエラー
-
-  // テストケース7: 無効なスプライトバンクを指定
-  printf("Test Case 7: Invalid sprite bank tests\n");
-  printf("fset/fget tests passed!\n");
-}
 }
 
 namespace pico8 {
@@ -327,7 +269,6 @@ static  void  hif_update(){
 
 void  Pico8::run(){
   _reset();
-  _test_fgetset();
   _init();
 
   _status = RUNNING;
