@@ -106,6 +106,14 @@ extern  "C" {
 extern void b8ApuReset(void);
 
 /**
+ * @brief The waveform table @ref b8ApuReset loads.
+ *
+ * Slots 0..7 are the classic BEEP-8 set (square, ramp and six shaped tones);
+ * slots 8..15 are silent. Read-only — copy it if you want to edit it.
+ */
+extern const u8 b8ApuDefaultWavtable[ B8_APU_NUM_WAVTYP ][ B8_APU_SAMPLES_PER_WAV ];
+
+/**
  * @brief Load a waveform table into the APU.
  *
  * @param wavtable Pointer to a @c u8[B8_APU_NUM_WAVTYP][B8_APU_SAMPLES_PER_WAV]

@@ -342,6 +342,9 @@ Presets, grouped by the kind of game event:
 | `sndBgmStop()` / `sndBgmIsPlaying()` | Stop / query. |
 | `sndBgmVolume(pct)` / `sndSfxVolume(pct)` | Master trims, 0–100. |
 | `sndStopAll()` | Music and effects. |
+| `sndSetWave(slot, "…")` | Define waveform `slot` (0–15) from 32 hex digits. |
+| `sndSetWaveData(slot, u8[32])` | Same, from an array of samples 0–15. |
+| `sndResetWaves()` | Restore all 16 slots to the factory table. |
 
 Tracks are parsed lazily straight off the caller's string, so the strings must outlive
 playback — string literals or statics, never a local buffer.
@@ -353,7 +356,8 @@ playback — string literals or statics, never a local buffer.
 | `l8` | Default note length: 1, 2, 4, 8, 16, 32. |
 | `v10` | Volume 0–15. |
 | `q6` | Gate 1–8 — the note sounds for `q/8` of its length. 8 = legato. |
-| `@0` | Waveform 0–7 (0 pulse, 1 saw, 2–7 shaped). |
+| `@0` | Waveform 0–15 (0 pulse, 1 saw, 2–7 shaped, 8–15 your own). |
+| `@w8={…}` | Define waveform 8 here, as 32 hex digits — see below. |
 | `@n` | Switch the track to the noise generator, for drums. Low octaves read as kicks, high ones as hats. Only one track at a time — there is a single noise generator, and the track's own tone channel goes silent. |
 | `cdefgab` | A note; optional `+`/`#`/`-`, then a length (`c16`), then dots (`c4.`). |
 | `r` / `^` | Rest / tie. |
@@ -379,6 +383,29 @@ LFO shapes are `0` sine (default), `1` triangle, `2` square — a trill, not a w
 `3` a falling ramp. Both LFOs are sampled on the sequencer's 120 Hz tick, so 1–10 Hz is the
 smooth range and 20 Hz is the ceiling. On an `@n` noise track only `mp` does anything: that
 generator's volume moves in 6 dB steps, too coarse for a tremolo or an envelope.
+
+### Your own waveforms
+
+`@0`–`@15` pick one of the chip's 16 waveform slots. Slots 0–7 hold the factory tones;
+slots **8–15 start silent and are yours**. A waveform is 32 samples of 4 bits, so it is
+written as **32 hex digits**: `0` the bottom of the wave, `f` the top, `8` the middle
+(silence). Whitespace and `|` between digits are ignored, and fewer than 32 digits are
+padded with `8`.
+
+Define one from the music itself, or from code — same digits either way:
+
+```cpp
+sndBgmPlay("@w8={89abcdeffedcba98 7654321001234567} @8 t120 o4 l8 cdefg");
+
+sndSetWave( 8, "89abcdeffedcba98 7654321001234567" );   // a triangle
+sndSetWave( 9, "ffffffffffffffff 0000000000000000" );   // a hard square
+sndBgmPlay ( "@8 t120 o4 l8 cdefg", "@9 t120 o3 l4 c g" );
+```
+
+Slots are global, not per track: `@w8` in one track redefines slot 8 for every track using
+it, which is what makes it a shared instrument. Slots 0–7 can be overwritten too, but
+`sndSfx` builds its tone presets out of them — change those and the effects change with
+them.
 
 Six tracks is a melody, a counter-melody, a three-note chord and a bass at once — or a
 lead doubled by a second track a few cents away (`k`) over a smaller arrangement. Sound

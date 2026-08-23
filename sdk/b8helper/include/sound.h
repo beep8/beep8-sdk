@@ -142,8 +142,9 @@ void sndSfx( SndSfx id );
  * | @c l8        | Default note length: 1, 2, 4, 8, 16, 32 (whole … 32nd). Default 8. |
  * | @c v10       | Volume, 0–15. Default 10.                                     |
  * | @c q6        | Gate time, 1–8: the note sounds for q/8 of its length, the rest is a gap. 8 = fully legato. Default 6. |
- * | @c \@0       | Waveform, 0–7. 0 = pulse/square, 1 = saw, 2–7 = shaped tones. Default 0. |
+ * | @c \@0       | Waveform, 0–15. 0 = pulse/square, 1 = saw, 2–7 = shaped tones, 8–15 = your own (see @ref sndSetWave). Default 0. |
  * | @c \@n       | Switch this track to the noise generator — use it for drums and hats. |
+ * | @c \@w8={…}  | Define waveform 8 right here, as 32 hex digits — see "Defining your own waveforms" below. |
  * | @c cdefgab   | A note. Optionally followed by @c + or @c # (sharp), @c - (flat), then a length (@c c16), then dots (@c c4.). |
  * | @c r         | A rest, with the same optional length (@c r4).                 |
  * | @c ^         | Tie: extend the previous note by another length (@c c4^8).     |
@@ -175,6 +176,45 @@ void sndSfx( SndSfx id );
  * @c mp does anything: that generator's volume moves in 6 dB steps, far too
  * coarse for a tremolo or an envelope, so a drum keeps the flat level its
  * @c v gave it.
+ *
+ * ### Defining your own waveforms
+ *
+ * @c \@0 … @c \@15 pick one of the chip's 16 waveform slots. Slots 0–7 hold
+ * the factory tones; slots **8–15 start silent and are yours**. Fill one and
+ * the track playing it changes timbre — this is the one knob that changes what
+ * a voice *is* rather than how it moves.
+ *
+ * A waveform is 32 samples of 4 bits, so it is written as **32 hex digits**,
+ * @c 0 the bottom of the wave, @c f the top and @c 8 the middle (silence).
+ * Either write it in the music …
+ *
+ * @code
+ *   //                     rise from the middle ... and fall back
+ *   sndBgmPlay("@w8={89abcdeffedcba98 7654321001234567} @8 t120 o4 l8 cdefg");
+ * @endcode
+ *
+ * … or set it from code with @ref sndSetWave, which takes the same digits:
+ *
+ * @code
+ *   sndSetWave( 8, "89abcdeffedcba98 7654321001234567" );   // a triangle
+ *   sndSetWave( 9, "ffffffffffffffff 0000000000000000" );   // a hard square
+ *   sndBgmPlay("@8 t120 o4 l8 cdefg", "@9 t120 o3 l4 c g");
+ * @endcode
+ *
+ * Whitespace and @c | between digits are ignored, so a shape can be grouped
+ * however it reads best. Fewer than 32 digits are padded with @c 8, and the
+ * definition is free to sit anywhere in a track — a looping piece re-reads it
+ * on every wrap at no cost, since nothing is sent to the chip unless the shape
+ * actually changed.
+ *
+ * @note Waveform slots are global, not per track: @c \@w8 in one track
+ *       redefines slot 8 for every track using it, which is what makes it
+ *       usable as a shared instrument. Redefining a slot *while* it sounds
+ *       changes the note in flight.
+ *
+ * @warning Slots 0–7 can be overwritten too, but @ref sndSfx builds its presets
+ *          out of them — change those and the sound effects change with them.
+ *          Keep your own timbres in 8–15 unless that is what you want.
  *
  * @param t0  Track 0 (usually the melody). Required.
  * @param t1  Track 1 (usually the bass), or @c nullptr.
@@ -217,6 +257,40 @@ void sndBgmVolume( int pct );
 
 /** @brief Master volume trim for sound effects, as a percentage (0–100, default 100). */
 void sndSfxVolume( int pct );
+
+/**
+ * @brief Define one of the 16 waveform slots, as 32 hex digits.
+ *
+ * The slot is what @c \@0 … @c \@15 select in the MML (and what @ref sndSfx
+ * builds its tone presets out of), so this is how a game gives itself an
+ * instrument of its own. See "Defining your own waveforms" above.
+ *
+ * @param slot   Waveform slot, 0–15. Keep to 8–15 unless you mean to change the
+ *               factory tones — and with them the sound effects.
+ * @param shape  32 hex digits, one per sample: @c 0 is the bottom of the wave,
+ *               @c f the top, @c 8 the middle. Whitespace and @c | are ignored;
+ *               a short shape is padded with @c 8 (silence).
+ *
+ * @code
+ *   sndSetWave( 8, "89abcdeffedcba98 7654321001234567" );   // triangle
+ *   sndBgmPlay ( "@8 t120 o4 l8 cdefg" );
+ * @endcode
+ */
+void sndSetWave( int slot, const char* shape );
+
+/**
+ * @brief Same as @ref sndSetWave, from an array rather than a string.
+ *
+ * For waveforms a game computes rather than writes out — a wavetable sweep, a
+ * shape built from a formula, one loaded from a file.
+ *
+ * @param slot     Waveform slot, 0–15.
+ * @param samples  32 samples, each 0–15 (values outside that range are clamped).
+ */
+void sndSetWaveData( int slot, const unsigned char* samples );
+
+/** @brief Restore all 16 waveform slots to the factory table. */
+void sndResetWaves();
 
 /** @brief Stop everything — music and all sound effects. */
 void sndStopAll();

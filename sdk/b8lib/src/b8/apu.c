@@ -6,8 +6,11 @@
  * 16 waveforms x 32 samples; each sample is 4-bit (0..15). The first eight are
  * the classic set used by the BEEP-8 sound editor (square, ramp, and several
  * shaped tones); the rest default to silence.
+ *
+ * Not static: <sound.h>'s helper keeps an editable RAM copy of this table so a
+ * game can define waveforms of its own, and starts it from these bytes.
  */
-static const u8 default_wavtable[ B8_APU_NUM_WAVTYP ][ B8_APU_SAMPLES_PER_WAV ] = {
+const u8 b8ApuDefaultWavtable[ B8_APU_NUM_WAVTYP ][ B8_APU_SAMPLES_PER_WAV ] = {
   { 14,14,14,14,14,14,14,14,14,14,14,14,14,14,14,14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
   {  0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9,10,10,11,11,12,12,13,13,14,14,15,15 },
   {  0, 2, 3, 4, 6, 6, 4, 5, 9,10,10, 8,10, 7,10, 9, 7, 7, 9, 6, 8, 6, 5, 6,10,12,10,10,12,13,14,15 },
@@ -38,7 +41,7 @@ void b8ApuReset( void ){
     B8_APU_NFREQ( ch )     = 0;
   }
 
-  b8ApuSetWavtable( &default_wavtable[0][0] );
+  b8ApuSetWavtable( &b8ApuDefaultWavtable[0][0] );
   b8ApuSetReverb( 0, 0 );
   B8_APU_MAXCH = 8;
 

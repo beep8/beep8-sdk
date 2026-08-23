@@ -33,6 +33,11 @@
  * the per-tick work is a table lookup and a couple of multiplies per track.
  * See track_modulate(); freq_shift_cents() is the arithmetic underneath it.
  *
+ * The waveform table is the one piece of the chip that is not per-note state:
+ * this file keeps an editable RAM copy of it (g_wav) so that '@w' and
+ * sndSetWave() can redefine any of the 16 slots, and points the APU there
+ * instead of at the ROM default the reset installs.
+ *
  * The sequencer runs on its own thread (tick_thread), woken by the APU's own
  * sync interrupt rather than by the game loop -- see ensure_init(). Everything
  * below therefore runs on two threads: the game thread through the public API,
@@ -107,6 +112,71 @@ int lerpi( int a, int b, int i, int n ){
   return a + ( b - a ) * i / n;
 }
 
+// ---------------------------------------------------------------------------
+// Waveform table
+// ---------------------------------------------------------------------------
+//
+// The APU re-reads its whole waveform table out of RAM every time WAVDATADDR is
+// written, so owning a RAM copy of that table is the whole of what it takes to
+// let a game define timbres of its own: edit a row, write the register again.
+//
+// b8ApuReset() points the chip at the ROM default table; ensure_init() copies
+// those bytes into g_wav and points it here instead. That happens on the first
+// sound a game makes, whether or not it ever defines a waveform, so '@w' and
+// sndSetWave() work from the first note on with nothing to initialise -- and
+// slots 0..7 still hold the factory tones, so a game that ignores all of this
+// sounds exactly as it did before.
+
+const int WAV_SLOTS   = B8_APU_NUM_WAVTYP;       // 16 waveforms ...
+const int WAV_SAMPLES = B8_APU_SAMPLES_PER_WAV;  // ... of 32 4-bit samples each
+
+// The sample value that maps to 0 on the way out (the chip reads 0..15 as
+// -8..+7), i.e. the level a waveform is silent at.
+const u8 WAV_MID = 8;
+
+u8 g_wav[ WAV_SLOTS ][ WAV_SAMPLES ];
+
+// A 512-byte DMA copy: cheap, but not free and not needed unless something
+// actually changed, so every caller below goes through wav_store() first.
+void wav_upload(){ b8ApuSetWavtable( &g_wav[0][0] ); }
+
+// Overwrite one slot. Returns whether the bytes actually moved.
+bool wav_store( int slot, const u8* samples ){
+  if( slot < 0 || slot >= WAV_SLOTS ) return false;
+  bool changed = false;
+  for( int i = 0 ; i < WAV_SAMPLES ; ++i ){
+    const u8 v = (u8)clampi( samples[i], 0, B8_APU_WAV_SAMPLE_MAX );
+    if( g_wav[ slot ][ i ] != v ){ g_wav[ slot ][ i ] = v; changed = true; }
+  }
+  return changed;
+}
+
+int hex_digit( char c ){
+  if( c >= '0' && c <= '9' ) return c - '0';
+  if( c >= 'a' && c <= 'f' ) return c - 'a' + 10;
+  if( c >= 'A' && c <= 'F' ) return c - 'A' + 10;
+  return -1;
+}
+
+// Read a waveform written as hex digits -- one digit per 4-bit sample, so a
+// full waveform is exactly 32 of them and the shape is legible as text.
+// Whitespace and '|' are skipped, as everywhere else in the MML, so a shape can
+// be grouped into readable runs. Reading stops at the first other character, or
+// at 32 digits; a short shape is padded with WAV_MID rather than left as noise.
+// Returns how many characters were consumed.
+int read_hex_wave( const char* s, u8* out ){
+  const char* p = s;
+  int n = 0;
+  for( ; *p && n < WAV_SAMPLES ; ++p ){
+    if( *p == ' ' || *p == '\t' || *p == '\n' || *p == '\r' || *p == '|' ) continue;
+    const int d = hex_digit( *p );
+    if( d < 0 ) break;
+    out[ n++ ] = (u8)d;
+  }
+  for( int i = n ; i < WAV_SAMPLES ; ++i ) out[i] = WAV_MID;
+  return (int)( p - s );
+}
+
 void tick_locked();
 
 // The sequencer's clock. It deliberately does not run on the game loop: a frame
@@ -144,6 +214,13 @@ void ensure_init(){
 
   b8ApuReset();        // enables B8_IRQ_APUS (and B8_APU_INTCTRL) as a side effect
   B8_APU_INTCTRL = 0;  // ... which tick_thread turns back on once it is waiting
+
+  // Take the waveform table over from the ROM copy b8ApuReset() just installed,
+  // so that a slot can be redefined later without resetting the chip.
+  for( int w = 0 ; w < WAV_SLOTS ; ++w )
+    for( int i = 0 ; i < WAV_SAMPLES ; ++i )
+      g_wav[w][i] = b8ApuDefaultWavtable[w][i];
+  wav_upload();
 
   sem_init( &g_lock, 0, 1 );
   g_inited = true;     // Lock is usable from here on, so the thread may start
@@ -698,6 +775,29 @@ void read_lfo( MmlTrack& t, Lfo& L, int depth_max ){
   L.phase = 0;
 }
 
+// '@w8={0123456789abcdeffedcba9876543210}' -- define waveform slot 8 in place,
+// from inside the music itself, so that a piece carries its own timbres instead
+// of needing a matching sndSetWave() call next to it.
+//
+// The braces are not decoration: hex digits and note names share the letters
+// a-f, so a miscounted shape without them would silently eat the notes that
+// follow it. With them, a malformed definition costs only itself.
+void read_wavedef( MmlTrack& t ){
+  const int slot = clampi( read_uint( t.p, 0 ), 0, WAV_SLOTS - 1 );
+  while( *t.p == ' ' || *t.p == '\t' || *t.p == '=' ) ++t.p;
+  if( *t.p != '{' ) return;                 // malformed: ignored, like any junk
+  ++t.p;
+
+  u8 shape[ WAV_SAMPLES ];
+  t.p += read_hex_wave( t.p, shape );
+  while( *t.p && *t.p != '}' ) ++t.p;       // anything past the 32nd digit
+  if( *t.p == '}' ) ++t.p;
+
+  // A looping track re-reads its own '@w' on every wrap; wav_store() reports
+  // that nothing moved, and the DMA is skipped.
+  if( wav_store( slot, shape ) ) wav_upload();
+}
+
 // Consume commands until something that takes time (a note, a rest or a tie)
 // starts. Returns false once the track has finished for good.
 bool parse_next( MmlTrack& t, int idx ){
@@ -763,8 +863,9 @@ bool parse_next( MmlTrack& t, int idx ){
       }
 
       case '@':
-        if( *t.p == 'n' || *t.p == 'N' ){ ++t.p; set_noise( t, idx, true ); }
-        else { t.wav = clampi( read_uint( t.p, 0 ), 0, 7 ); set_noise( t, idx, false ); }
+        if     ( *t.p == 'n' || *t.p == 'N' ){ ++t.p; set_noise( t, idx, true ); }
+        else if( *t.p == 'w' || *t.p == 'W' ){ ++t.p; read_wavedef( t ); }
+        else { t.wav = clampi( read_uint( t.p, 0 ), 0, WAV_SLOTS - 1 ); set_noise( t, idx, false ); }
         continue;
 
       case '[':
@@ -949,6 +1050,31 @@ void sndBgmStop(){
 }
 
 bool sndBgmIsPlaying(){ return g_bgm_on; }
+
+void sndSetWave( int slot, const char* shape ){
+  if( !shape ) return;
+  u8 s[ WAV_SAMPLES ];
+  read_hex_wave( shape, s );
+  ensure_init();
+  Lock lk;
+  if( wav_store( slot, s ) ) wav_upload();
+}
+
+void sndSetWaveData( int slot, const unsigned char* samples ){
+  if( !samples ) return;
+  ensure_init();
+  Lock lk;
+  if( wav_store( slot, samples ) ) wav_upload();
+}
+
+void sndResetWaves(){
+  ensure_init();
+  Lock lk;
+  bool changed = false;
+  for( int w = 0 ; w < WAV_SLOTS ; ++w )
+    if( wav_store( w, &b8ApuDefaultWavtable[w][0] ) ) changed = true;
+  if( changed ) wav_upload();
+}
 
 void sndBgmVolume( int pct ){ g_bgm_vol_pct = clampi( pct, 0, 100 ); }
 void sndSfxVolume( int pct ){ g_sfx_vol_pct = clampi( pct, 0, 100 ); }
