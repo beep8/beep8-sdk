@@ -13,12 +13,14 @@
 // long, and each loops back to its own start independently (see sound.cpp's
 // track_advance), so a mismatch would drift them apart within a few bars.
 //
-// TEXT LAYER CHOICE: everything here is drawn on the BACKGROUND text layer
+// TEXT LAYER CHOICE: all the text here is drawn on the BACKGROUND text layer
 // (cursor()/print(), TILE units, 16x30 tiles on a 128x240 screen) rather than
 // the sprite layer (scursor()/sprint(), PIXEL units). Background text is
 // written into a tilemap once and then costs a single PPU command per frame no
 // matter how much of it there is, whereas sprite text re-issues one sprite per
-// glyph every frame.
+// glyph every frame. The pixel art beside the title is the one thing that is
+// not text: it goes on the drawing layer, which cls() wipes every frame, so
+// unlike the text it is re-issued every frame whether it moved or not.
 //
 // UI SHAPE: BGM and SE are two horizontal selectors stacked one above the
 // other. Up/down picks which of the two you are on, left/right walks that
@@ -28,13 +30,11 @@
 // point of this layout is that each axis is driven by the keys pointing along
 // it.
 //
-// Nothing is re-drawn unless something actually changed: a full 30-line
+// No text is re-drawn unless something actually changed: a full 30-line
 // repaint costs ~66k cycles, a whole frame's budget, so doing one per keypress
-// visibly drops a frame. A move here repaints three short rows instead.
+// visibly drops a frame. A move here repaints two short rows instead.
 #include <pico8.h>
 #include <sound.h>
-#include <sys/time.h>
-#include <b8/syscall.h>
 
 using namespace pico8;
 
@@ -1196,26 +1196,38 @@ static const BgmDef BGM_DEFS[] = {
 };
 static const int BGM_COUNT = (int)( sizeof(BGM_DEFS) / sizeof(BGM_DEFS[0]) );
 
-// Background text grid: 16 tiles across, 30 visible down. Two selectors, BGM
-// above SE, each one laid out along the axis of the key that drives it: the
-// name sits between a '<' and a '>' and left/right walks it, so the arrows the
-// eye follows are the arrows the thumb presses. Each selector owns three rows
-// -- label, name, position bar.
-static const int ROW_TITLE = 0;
-static const int ROW_STATS = 1;
-static const int BGM_ROW   = 7;
-static const int SE_ROW    = 15;
-static const int ROW_HELP  = 25;
+// Background text grid: 16 tiles across, 30 visible down. Everything sits in
+// the top twelve rows -- title, the two selectors, the key legend -- and the
+// rest of the 240px screen is left empty. Packing upwards is what a phone in
+// portrait wants: the bottom of a tall screen is where the thumb rests, so it
+// is the worst place to put something you have to read.
+//
+// Each selector is two rows: a label carrying the index (and, for BGM, whether
+// it is playing) and the name itself between the two arrows that move it.
+static const int ROW_TITLE = 0;       // ... with the pixel art strip beside it
+static const int BGM_ROW   = 3;
+static const int SE_ROW    = 6;
+static const int ROW_HELP  = 9;
 
 static const int NAME_W    = 14;      // columns 1..14, between the two arrows
 
-// Which selector a tap lands on. The bands are far taller than the three rows
-// each selector actually draws, because a finger on a 128px-wide screen is not
-// a mouse pointer: everything above the midline is the BGM row.
-static const int BGM_HIT_TOP = 4,  BGM_HIT_BOT = 11;
-static const int SE_HIT_TOP  = 12, SE_HIT_BOT  = 20;
+// Which selector a tap lands on: the band around each is wider than the two
+// rows it draws, because a finger on a 128px-wide screen is not a mouse
+// pointer. Rows 0..1 are the art strip and belong to neither.
+static const int BGM_HIT_TOP = 2, BGM_HIT_BOT = 5;
+static const int SE_HIT_TOP  = 6, SE_HIT_BOT  = 8;
 static const int HIT_LEFT    = 3;     // x <= this taps the '<' arrow
 static const int HIT_RIGHT   = 12;    // x >= this taps the '>' arrow
+
+// The pixel art strip, in PIXELS: rows 0..1 to the right of "SNDTEST", which
+// itself ends at x=64.
+static const int ART_X       = 74;    // the blob
+static const int ART_Y       = 5;
+static const int NOTE_X      = 88;    // where a note starts its climb
+static const int NOTE_RISE   = 8;     // ... and how far it drifts, up and right
+static const int NOTE_DRIFT  = 24;
+static const int NOTE_PERIOD = 90;    // frames per note, 1.5s at 60Hz
+static const int NOTES       = 3;
 
 // Only four background palettes exist, so they carry four meanings: yellow is
 // the chrome of the selector you are on, peach the name it is showing,
@@ -1224,22 +1236,29 @@ static const int PAL_HEAD  = 1;       // WHITE -> YELLOW
 static const int PAL_SEL   = 2;       // WHITE -> LIGHT_PEACH
 static const int PAL_DIM   = 3;       // WHITE -> LAVENDER
 
-static const int STAT_WIN  = 30;      // frames averaged per stats update
+// The cast, one bit per pixel, MSB leftmost. A blob that hums along to the
+// music and the two notes it hums; 8x8 each, which is all the height there is
+// beside a title drawn in 8px text.
+static const u8 GLYPH_BODY [8] = { 0x3C, 0x7E, 0xFF, 0xFF, 0xFF, 0xFF, 0x7E, 0x42 };
+static const u8 GLYPH_NOTE1[8] = { 0x1C, 0x16, 0x12, 0x10, 0x10, 0x70, 0xF0, 0x60 };
+static const u8 GLYPH_NOTE2[8] = { 0x3E, 0x22, 0x22, 0x22, 0x22, 0x66, 0xEE, 0x66 };
 
-static const u64 NS_PER_SEC   = 1000000000ULL;
-static const u64 NS_PER_FRAME = NS_PER_SEC / 60;
-
-// Wall clock in nanoseconds.
-//
-// NOTE: B8_DWT_CYCCNT looks like the obvious thing to use here and is not
-// usable -- b8os' scheduler calls ArchDriverGetCycleAndClear() and ZEROES the
-// DWT counter on every scheduling event (os.c, _b8OsProcessScheduler), so
-// a difference taken across one reads garbage. clock_gettime() reads the total
-// the OS accumulates from exactly that counter, and is monotonic.
-static u64 now_ns(){
-  struct timespec ts;
-  clock_gettime( CLOCK_MONOTONIC, &ts );
-  return (u64)ts.tv_sec * NS_PER_SEC + (u64)ts.tv_nsec;
+// Draw one of those glyphs as horizontal runs rather than a pset() per pixel:
+// pset() is rectfill() of a 1x1 box, so it costs a whole PPU rect command
+// each, and a run of six lit pixels buys that same one command six times over.
+// The blob is 14 commands this way instead of 44.
+static void blit8( const u8* rows, int x, int y, Color col ){
+  for( int r = 0 ; r < 8 ; ++r ){
+    const int bits = rows[r];
+    int c = 0;
+    while( c < 8 ){
+      if( !( bits & ( 0x80 >> c ) ) ){ ++c; continue; }
+      int e = c;
+      while( e < 8 && ( bits & ( 0x80 >> e ) ) ) ++e;
+      rectfill( x + c, y + r, x + e, y + r + 1, col );   // x1/y1 are exclusive
+      c = e;
+    }
+  }
 }
 
 // Centre s into w columns of dst (not terminated). The blank padding is the
@@ -1257,7 +1276,7 @@ static void center( char* dst, int w, const char* s ){
 // One horizontal selector. Both are the same thing at different lengths, which
 // is the point of the layout: the keys do not change meaning between them.
 // Wrapping is deliberate -- with no list on screen to see the end of, falling
-// off one end and reappearing at the other is the cheapest way to reach the
+// off one side and reappearing on the other is the cheapest way to reach the
 // far side of 48 entries.
 struct Sel {
   const int count;
@@ -1272,21 +1291,13 @@ public:
   Sel sfx = Sel( SFX_COUNT );
 
   int  focus       = 0;               // 0 = the BGM selector, 1 = the SE one
+  int  tick        = 0;               // frames since boot, for the animation
   int  drawn_bgm   = -1;              // what the tilemap currently shows
   int  drawn_sfx   = -1;
   int  drawn_focus = -1;
   bool drawn_on    = false;           // ... and whether the label said "ON"
   bool dirty       = true;
   bool first_draw  = true;
-
-  // --- frame time accounting (see the note on now_ns() above) ---
-  u64 t_enter    = 0;                 // clock at the top of this _update()
-  u64 t_prev     = 0;                 // ... of the previous one
-  u64 sum_work   = 0;                 // ns spent in _update()+_draw()
-  u64 sum_frame  = 0;                 // ns per whole frame period
-  int nsample    = 0;
-  int fps        = 0;
-  int workpct    = 0;
 
   void _init() override {
     // NOTE: pal() is not called here. It emits a PPU command, so like every
@@ -1295,7 +1306,6 @@ public:
     // palette itself persists once written, so _draw() sets it up exactly once
     // (see first_draw below), the same way pakupaku does it.
     playBgm();
-    t_prev = now_ns();
   }
 
   Sel& sel( int p ){ return ( p == 0 ) ? bgm : sfx; }
@@ -1321,9 +1331,7 @@ public:
   }
 
   void _update() override {
-    t_enter    = now_ns();
-    sum_frame += t_enter - t_prev;
-    t_prev     = t_enter;
+    ++tick;
 
     // Two rows, so either vertical key just swaps between them.
     if( btnp(BUTTON_UP) || btnp(BUTTON_DOWN) ) focus ^= 1;
@@ -1354,6 +1362,45 @@ public:
     }
   }
 
+  // The strip beside the title. It is wired to sndBgmIsPlaying() rather than
+  // left to run free: a blob asleep with its eyes shut says "the music is
+  // stopped" more plainly than the word OFF three rows below it does.
+  void drawArt(){
+    const bool on = sndBgmIsPlaying();
+
+    static const int BOB[4] = { 0, 1, 2, 1 };
+    const int by = ART_Y + ( on ? BOB[ ( tick >> 3 ) & 3 ] : 2 );
+
+    blit8( GLYPH_BODY, ART_X, by, on ? Color::PINK : Color::DARK_GREY );
+
+    // A blink every 2.5s is what stops it reading as a decal; while the music
+    // is off the eyes just stay shut.
+    if( !on || ( tick % 150 ) < 6 ){
+      rectfill( ART_X + 1, by + 4, ART_X + 3, by + 5, Color::BLACK );
+      rectfill( ART_X + 5, by + 4, ART_X + 7, by + 5, Color::BLACK );
+    } else {
+      rectfill( ART_X + 2, by + 3, ART_X + 3, by + 5, Color::BLACK );
+      rectfill( ART_X + 5, by + 3, ART_X + 6, by + 5, Color::BLACK );
+    }
+
+    if( !on ) return;
+
+    rectfill( ART_X + 3, by + 6, ART_X + 5, by + 7, Color::BLACK );  // singing
+
+    // Three notes on one path, evenly spread around it, so the strip always
+    // has something crossing it however you catch it.
+    static const Color NOTE_COL[NOTES] = {
+      Color::YELLOW, Color::LIGHT_PEACH, Color::WHITE,
+    };
+    for( int i = 0 ; i < NOTES ; ++i ){
+      const int p = ( tick + i * ( NOTE_PERIOD / NOTES ) ) % NOTE_PERIOD;
+      blit8( ( i & 1 ) ? GLYPH_NOTE2 : GLYPH_NOTE1,
+             NOTE_X + p * NOTE_DRIFT / NOTE_PERIOD,
+             NOTE_RISE - p * NOTE_RISE / NOTE_PERIOD,
+             NOTE_COL[i] );
+    }
+  }
+
   void drawSel( int p ){
     Sel& s = sel( p );
     const bool f = ( focus == p );
@@ -1375,16 +1422,6 @@ public:
     line[ NAME_W + 2 ] = 0;
     cursor( 0, r + 1, f ? (BgPal)PAL_SEL : (BgPal)PAL_DIM );
     print( "%s", line );
-
-    // How far along the list you are, drawn along the same axis you move on.
-    // It is the only thing left saying there are 48 of these, now that they
-    // are no longer all on screen at once.
-    char bar[ NAME_W + 1 ];
-    for( int i = 0 ; i < NAME_W ; ++i ) bar[i] = '-';
-    bar[ s.count > 1 ? s.cur * ( NAME_W - 1 ) / ( s.count - 1 ) : 0 ] = '#';
-    bar[ NAME_W ] = 0;
-    cursor( 1, r + 2, f ? (BgPal)PAL_HEAD : (BgPal)PAL_DIM );
-    print( "%s", bar );
   }
 
   void drawAll(){
@@ -1424,18 +1461,7 @@ public:
     drawn_focus = focus;
     drawn_on    = on;
 
-    if( ++nsample >= STAT_WIN ){
-      // fps  = how many frame periods fit in a second
-      // work = share of one 60Hz frame's time spent in _update()+_draw()
-      fps     = sum_frame ? (int)( (u64)STAT_WIN * NS_PER_SEC / sum_frame ) : 0;
-      workpct = (int)( sum_work * 100 / ( (u64)STAT_WIN * NS_PER_FRAME ) );
-      cursor( 1, ROW_STATS, (BgPal)PAL_HEAD );
-      print( "%dfps W%d%%   ", fps, workpct );
-      sum_frame = sum_work = 0;
-      nsample   = 0;
-    }
-
-    sum_work += now_ns() - t_enter;
+    drawArt();
   }
 };
 
