@@ -11,6 +11,9 @@
 //   row C = Flip-H / Flip-V / Mirror ... plus, right-aligned across rows C and D,
 //   a boxed 2x2 transfer block: [Save Load] over [Download Import];
 //   row D = Undo / Redo ... [Download Import] (see above).
+// Fill and Cut/Copy/Paste only function in one zoom mode each (Fill in PIXEL,
+// Cut/Copy/Paste in OVERVIEW), so btnHidden() drops the other trio from the
+// toolbar entirely rather than showing it greyed-out and untappable.
 // Undo/Redo keep up to UNDO_MAX steps. Cut/Copy/Paste act on the current 16x16
 // viewport tile in OVERVIEW mode; the two flips mirror it in either mode (the
 // visible slice in PIXEL, the white box in OVERVIEW). Mirror is a persistent
@@ -663,7 +666,16 @@ class PixArt : public Pico8 {
 
   // The local-file row has no meaning when a page owns the file: it is neither
   // drawn nor tappable there (the sync is automatic -- see pumpHost()).
-  bool btnHidden(int id) const { return hosted && (id == B_DL || id == B_IMPORT); }
+  // Fill/Cut/Copy/Paste are hard-disabled by the current zoom mode (not by any
+  // transient state), so instead of dimming them they are hidden outright, same
+  // as the hosted-mode file row -- fewer icons on screen reads clearer than a
+  // greyed-out one that can never be tapped in this mode.
+  bool btnHidden(int id) const {
+    if (hosted && (id == B_DL || id == B_IMPORT)) return true;
+    if (overview && id == B_FILL) return true;                          // 1x: view-only, no fill
+    if (!overview && (id == B_CUT || id == B_COPY || id == B_PASTE)) return true; // 8x: overview only
+    return false;
+  }
 
   void dispatch(int btn){
     switch (btn) {
@@ -904,10 +916,10 @@ class PixArt : public Pico8 {
       if (btnHidden(id)) continue;             // hosted: no local-file row
       Color fg = BLACK;
       switch (id) {
-        case B_PEN: case B_HAND: case B_EYE: fg = (id == tool) ? BLACK : LIGHT_GREY; break;
-        // Fill is disabled in OVERVIEW (view-only): always grey there; else it is a
-        // normal tool-trio member (black when selected).
-        case B_FILL:  fg = overview ? LIGHT_GREY : ((id == tool) ? BLACK : LIGHT_GREY); break;
+        // Fill joins the tool trio: btnHidden() already keeps it off screen in
+        // OVERVIEW, so here it is just another selectable tool.
+        case B_PEN: case B_HAND: case B_EYE: case B_FILL:
+          fg = (id == tool) ? BLACK : LIGHT_GREY; break;
         case B_UNDO:  if (uCount == 0)               fg = LIGHT_GREY; break;
         case B_REDO:  if (rCount == 0)               fg = LIGHT_GREY; break;
         // 8x/1x: exclusive pair, same convention as the tool trio -- the active
@@ -916,9 +928,11 @@ class PixArt : public Pico8 {
         case B_ZOOM1: fg = overview ? BLACK : LIGHT_GREY; break;
         // Grid: ON = black, OFF = light grey (toggle indicated by icon color).
         case B_GRID:  if (!grid)                     fg = LIGHT_GREY; break;
-        case B_CUT:   if (!overview)                 fg = LIGHT_GREY; break;  // overview only
-        case B_COPY:  if (!overview)                 fg = LIGHT_GREY; break;  // overview only
-        case B_PASTE: if (!overview || !hasClip)     fg = LIGHT_GREY; break;
+        // Cut/Copy are only ever shown in OVERVIEW (btnHidden), so once here
+        // they are always tappable. Paste too, but it still greys out with an
+        // empty clipboard -- that's clipboard state, not the zoom mode.
+        case B_CUT: case B_COPY: break;
+        case B_PASTE: if (!hasClip)                  fg = LIGHT_GREY; break;
         case B_HELP:  break;                          // always available
         case B_FLIPH: case B_FLIPV: break;            // available in both modes
         case B_MIRROR: if (mirror == 0) fg = LIGHT_GREY; break;  // off = grey, on = black
@@ -938,10 +952,12 @@ class PixArt : public Pico8 {
       const uint16_t* bits = (id == B_MIRROR && mirror == 2) ? kIconMirrorV : kIcon[id];
       drawButton(bx, by, fg, pressed, bits);
     }
-    // light-grey box grouping the four mutually-exclusive tools (drawn over the
+    // light-grey box grouping the mutually-exclusive tools (drawn over the
     // button panels so its left edge stays visible at column 0). Top edge nudged
-    // up 1px (BARA_Y-2) for a touch more breathing room above the icons.
-    rect(0, BARA_Y - 2, 3 * PITCH + ICON + 1, BARA_Y + ICON + 1, LIGHT_GREY);
+    // up 1px (BARA_Y-2) for a touch more breathing room above the icons. In
+    // OVERVIEW, Fill is hidden (btnHidden), so the box closes up around the
+    // remaining Pen/Hand/Eye trio instead of leaving a gap over empty space.
+    rect(0, BARA_Y - 2, (overview ? 2 : 3) * PITCH + ICON + 1, BARA_Y + ICON + 1, LIGHT_GREY);
     // light-grey box grouping the 8x/1x zoom pair (same mutually-exclusive
     // convention as the tool-trio box above, right-aligned instead of left).
     rect(SCRW - ICON - PITCH - 2, BARA_Y - 2, SCRW, BARA_Y + ICON + 1, LIGHT_GREY);
