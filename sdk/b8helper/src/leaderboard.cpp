@@ -45,10 +45,16 @@ static int parse_board( const char* json, leaderboard::Entry* out, int max ){
   return n;
 }
 
+static const char* window_str( int window ){
+  if( window == leaderboard::ALLTIME ) return "alltime";
+  if( window == leaderboard::WEEKLY  ) return "weekly";
+  return "daily";
+}
+
 int leaderboard::board( const char* game, int window, Entry* out, int max ){
   char url[160];
   snprintf( url, sizeof(url), "%s/board?game=%s&window=%s",
-            LB_BASE, game, window == ALLTIME ? "alltime" : "daily" );
+            LB_BASE, game, window_str( window ) );
 
   static char buf[2048];
   int n = http_get( url, buf, sizeof(buf) );
@@ -82,11 +88,12 @@ bool leaderboard::start( const char* game, char* tokenOut, int tokenCap,
 }
 
 int leaderboard::submit( const char* game, const char* name, int score,
-                         const char* token, Entry* out, int max, int* rankOut ){
+                         const char* token, int window,
+                         Entry* out, int max, int* rankOut ){
   // name (A-Z only) and the base64url token are URL-safe, so no escaping needed.
   char url[320];
-  snprintf( url, sizeof(url), "%s/submit?game=%s&name=%s&score=%d&token=%s",
-            LB_BASE, game, name, score, token );
+  snprintf( url, sizeof(url), "%s/submit?game=%s&name=%s&score=%d&token=%s&window=%s",
+            LB_BASE, game, name, score, token, window_str( window ) );
 
   static char buf[2048];
   int n = http_get( url, buf, sizeof(buf) );
