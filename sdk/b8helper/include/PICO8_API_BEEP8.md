@@ -320,18 +320,25 @@ using it; the low-level driver in `<b8/apu.h>` is for tools that want raw regist
 
 | Function | Notes |
 |---|---|
-| `sndSfx(SndSfx id)` | Fire-and-forget one-shot. Safe to call while music plays; the oldest effect is dropped when all four voices are busy. |
+| `sndSfx(SndSfx id)` | Fire-and-forget one-shot. Safe to call while music plays; the effects side owns two tone voices and one noise voice, and the oldest effect is dropped when they are all busy. |
 
 Presets, grouped by the kind of game event:
 
 | Group | Presets |
 |---|---|
-| Player action | `SFX_JUMP`, `SFX_LAND`, `SFX_STEP`, `SFX_SWIPE`, `SFX_SHOOT`, `SFX_CHARGE` |
-| Impact / destruction | `SFX_HIT`, `SFX_BOUNCE`, `SFX_BREAK`, `SFX_BLOCK`, `SFX_EXPLODE`, `SFX_DAMAGE` |
-| Pickups / rewards | `SFX_COIN`, `SFX_HEAL`, `SFX_POWERUP`, `SFX_LEVELUP`, `SFX_UNLOCK` |
-| Menus / UI | `SFX_SELECT`, `SFX_CONFIRM`, `SFX_CANCEL`, `SFX_DENY`, `SFX_BLIP` |
-| Game state | `SFX_ALARM`, `SFX_CLEAR`, `SFX_GAMEOVER` |
-| Environment | `SFX_SPLASH`, `SFX_WARP` |
+| Player action | `SFX_JUMP`, `SFX_DOUBLEJUMP`, `SFX_LAND`, `SFX_STEP`, `SFX_SWIPE`, `SFX_DASH`, `SFX_SHOOT`, `SFX_CHARGE` |
+| Weapons | `SFX_LASER`, `SFX_MISSILE`, `SFX_ZAP`, `SFX_RELOAD` |
+| Impact / destruction | `SFX_HIT`, `SFX_BOUNCE`, `SFX_BREAK`, `SFX_BLOCK`, `SFX_CRUSH`, `SFX_DAMAGE` |
+| Explosions | `SFX_EXPLODE` (mid), `SFX_BOOM` (deep and long), `SFX_BLAST` (a sharp crack falling into a low tail), `SFX_RUMBLE` (a distant roar) |
+| Pickups / rewards | `SFX_COIN`, `SFX_GEM`, `SFX_HEAL`, `SFX_POWERUP`, `SFX_LEVELUP`, `SFX_UNLOCK`, `SFX_EXTRALIFE` |
+| Menus / UI | `SFX_SELECT`, `SFX_CONFIRM`, `SFX_CANCEL`, `SFX_DENY`, `SFX_BLIP`, `SFX_TEXT`, `SFX_PAUSE` |
+| Game state | `SFX_ALARM`, `SFX_COUNTDOWN`, `SFX_START`, `SFX_CLEAR`, `SFX_VICTORY`, `SFX_GAMEOVER` |
+| Environment | `SFX_SPLASH`, `SFX_BUBBLE`, `SFX_WIND`, `SFX_FIRE`, `SFX_DOOR`, `SFX_ENGINE`, `SFX_MAGIC`, `SFX_WARP` |
+
+Those 50 names are the complete list. Several of them are two voices at once (a
+noise body under a pitched thump, a fanfare doubled an octave up), which is why
+there is no way to layer two of them yourself: pick the one whose name matches
+the event and let it be one sound.
 
 ### Music (MML)
 

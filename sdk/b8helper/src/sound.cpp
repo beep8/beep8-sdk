@@ -367,66 +367,163 @@ u32 freq_shift_cents( u32 f, s32 cents ){
 
 struct SfxDef {
   unsigned char  kind;    // 0 = tone, 1 = noise
-  unsigned char  wav;     // tone waveform
+  unsigned char  wav;     // tone waveform, 0..7 (see the note above the table)
   unsigned char  mode;    // 0 = glide hz0->hz1 | 1 = step at the half | 2 = step at the thirds
   unsigned char  ticks;   // total duration, in 1/120 s ticks
   unsigned short hz0, hz1, hz2;   // hz2 is only read in mode 2
   unsigned short v0, v1;  // tone: CHVOL 0..4095 | noise: attenuation shift 0..16
-  // One sine LFO per preset, feeding both depths at once -- a wobble is nearly
+  // One LFO per preset, feeding both depths at once -- a wobble is nearly
   // always wanted on the pitch and the volume together, and sharing the phase
-  // keeps the table to three extra columns.
+  // keeps the table to four extra columns.
+  unsigned short lpd;     //   pitch depth, in cents (an octave is 1200)
   unsigned char  lhz;     // LFO speed in Hz; 0 = no LFO at all
-  unsigned char  lpd;     //   pitch depth, in cents
   unsigned char  lvd;     //   volume depth, in percent (tones only -- see below)
+  unsigned char  lsh;     //   shape: 0 sine, 1 triangle, 2 square, 3 falling ramp
+  // A preset may be two voices rather than one: 'lay' names a second def in
+  // SFX_LAYER below (1-based, 0 = this is a single voice), fired at the same
+  // moment as this one and 'dly' ticks after it. That is how a blast gets a
+  // pitched thump under its noise body, and how a fanfare gets a harmony --
+  // see the comment above SFX_LAYER.
+  unsigned char  dly;     // start delay, in ticks (layers only; 0 on a main def)
+  unsigned char  lay;     // 1 + index into SFX_LAYER, or 0
 };
 
-// Indexed by SndSfx — keep in the same order as that enum, which is grouped by the
-// kind of game event rather than by how the sound is built.
+// The tone presets pick their timbre out of waveform slots 0..7, the factory
+// eight (0 square, 1 saw, 2 rough, 3 double-lobed, 4 spiky sine, 5 soft,
+// 6 metallic, 7 stepped square). Slots 8..15 are deliberately never touched:
+// those belong to the game, and an effect that reached into them would change
+// its own voice the moment the game defined an instrument of its own.
 //
-//                         kind wav mode  tck    hz0    hz1    hz2     v0    v1  lhz  lpd  lvd
+// Noise pitch is worth one warning. NFREQ clocks a shift register, and the
+// chip only reloads that register when the accumulator's top half rolls over,
+// so the hz written here comes out as 32x that many steps a second -- which
+// saturates at the 24 kHz output rate once hz passes ~750. Everything above
+// that is the same white noise; the range that actually *sounds* different is
+// 20..750, and that is where the low, heavy presets below live.
+//
+// Noise level needs the same care from the other end. The generator's output is
+// a full-scale 16-bit number shifted right by NCHVOLDIV, so a noise preset at
+// shift 0 is already the whole of the mixer's headroom on its own: the presets
+// that carry a tone layer sit at shift 1 instead, which is what leaves room for
+// that layer to be heard rather than clamped away.
+
+// Indexed by SndSfx -- keep in the same order as that enum, which is grouped by
+// the kind of game event rather than by how the sound is built.
+//
+//                          kind wav mode  tck    hz0    hz1    hz2     v0    v1   lpd  lhz  lvd  lsh  dly  lay
 const SfxDef SFX[ SFX_COUNT ] = {
   // -- player action --
-  /* SFX_JUMP     */ {  0,  0,  0,  20,   200,   700,     0,  1800,  300,   0,   0,   0 },
-  /* SFX_LAND     */ {  1,  0,  0,  14,   260,   100,     0,     0,    7,   0,   0,   0 },
-  /* SFX_STEP     */ {  1,  0,  0,   8,   700,   450,     0,     1,    7,   0,   0,   0 },
-  /* SFX_SWIPE    */ {  1,  0,  0,  22,  4000,   500,     0,     2,    9,   0,   0,   0 },
-  /* SFX_SHOOT    */ {  0,  1,  0,  16,  1400,   350,     0,  1300,  100,   0,   0,   0 },
-  /* SFX_CHARGE   */ {  0,  1,  0,  60,   200,   900,     0,   900, 1500,   7,  30,  25 },
+  /* SFX_JUMP       */ {  0,  0,  0,  20,   200,   700,     0,  1800,  300,   15,  10,   0,   1,   0,   0 },
+  /* SFX_DOUBLEJUMP */ {  0,  7,  0,  14,   400,  1200,     0,  1500,  200,   20,  14,   0,   1,   0,   0 },
+  /* SFX_LAND       */ {  1,  0,  0,  14,   260,   100,     0,     1,    7,  250,   8,   0,   3,   0,   1 },
+  /* SFX_STEP       */ {  1,  0,  0,   8,   700,   450,     0,     1,    7,  200,  12,   0,   2,   0,   0 },
+  /* SFX_SWIPE      */ {  1,  0,  0,  22,  1400,   380,     0,     2,    9,  600,   6,   0,   3,   0,   0 },
+  /* SFX_DASH       */ {  1,  0,  0,  18,   300,  1400,     0,     3,   10,  400,   9,   0,   1,   0,   2 },
+  /* SFX_SHOOT      */ {  0,  1,  0,  16,  1400,   350,     0,  1300,  100,   30,  16,   0,   2,   0,   0 },
+  /* SFX_CHARGE     */ {  0,  1,  0,  60,   200,   900,     0,   900, 1500,   30,   7,  25,   0,   0,   3 },
+
+  // -- weapons --
+  /* SFX_LASER      */ {  0,  7,  0,  12,  3000,   600,     0,  1600,  100,   40,  18,   0,   2,   0,   4 },
+  /* SFX_MISSILE    */ {  1,  0,  0,  30,   200,   900,     0,     4,   10,  500,   5,   0,   0,   0,   5 },
+  /* SFX_ZAP        */ {  0,  6,  0,  20,  1200,   900,     0,  1500,  200,  120,  20,  60,   2,   0,   6 },
+  /* SFX_RELOAD     */ {  1,  0,  0,   6,  1000,   700,     0,     2,    8,    0,   0,   0,   0,   0,   7 },
 
   // -- impact and destruction --
-  /* SFX_HIT      */ {  1,  0,  0,  12,   600,   150,     0,     0,    7,   0,   0,   0 },
-  /* SFX_BOUNCE   */ {  0,  0,  0,  14,   660,   440,     0,  1400,  200,   0,   0,   0 },
-  /* SFX_BREAK    */ {  1,  0,  0,  28,  2200,   500,     0,     0,    9,  16, 200,   0 },
-  /* SFX_BLOCK    */ {  0,  6,  0,  14,  1760,  1400,     0,  1500,  200,   0,   0,   0 },
-  /* SFX_EXPLODE  */ {  1,  0,  0,  52,   800,   120,     0,     0,   10,   5, 150,   0 },
-  /* SFX_DAMAGE   */ {  0,  1,  0,  36,   400,    90,     0,  1800,  200,  13,  60,  40 },
+  /* SFX_HIT        */ {  1,  0,  0,  12,   600,   150,     0,     0,    7,  300,  10,   0,   3,   0,   0 },
+  /* SFX_BOUNCE     */ {  0,  0,  0,  14,   660,   440,     0,  1400,  200,   25,  12,   0,   1,   0,   0 },
+  /* SFX_BREAK      */ {  1,  0,  0,  28,  1600,   300,     0,     0,    9,  700,  16,   0,   2,   0,   0 },
+  /* SFX_BLOCK      */ {  0,  6,  0,  14,  1760,  1400,     0,  1500,  200,   30,  15,   0,   2,   0,   8 },
+  /* SFX_CRUSH      */ {  1,  0,  0,  34,   420,    90,     0,     1,    9,  500,  11,   0,   2,   0,   9 },
+  /* SFX_DAMAGE     */ {  0,  1,  0,  36,   400,    90,     0,  1800,  200,   60,  13,  40,   1,   0,   0 },
+  /* SFX_EXPLODE    */ {  1,  0,  0,  52,   800,   120,     0,     0,   10,  400,   5,   0,   3,   0,   0 },
+  /* SFX_BOOM       */ {  1,  0,  0,  70,   300,    45,     0,     1,   11,  500,   4,   0,   3,   0,  10 },
+  /* SFX_BLAST      */ {  1,  0,  0,  40,  1000,    55,     0,     1,   10,  900,   7,   0,   3,   0,  11 },
+  /* SFX_RUMBLE     */ {  1,  0,  0, 100,   130,    55,     0,     2,   12,  600,   3,   0,   0,   0,  12 },
 
   // -- pickups and rewards --
-  /* SFX_COIN     */ {  0,  0,  1,  16,   988,  1319,     0,  1700,  900,   0,   0,   0 },
-  /* SFX_HEAL     */ {  0,  3,  0,  44,   587,  1175,     0,  1200,  500,   6,  25,  20 },
-  /* SFX_POWERUP  */ {  0,  0,  0,  40,   523,  1568,     0,  1500,  700,   0,   0,   0 },
-  /* SFX_LEVELUP  */ {  0,  0,  2,  60,   523,   784,  1047,  1600, 1200,   6,  20,   0 },
-  /* SFX_UNLOCK   */ {  0,  5,  2,  24,   440,   659,   880,  1500, 1100,   0,   0,   0 },
+  /* SFX_COIN       */ {  0,  0,  1,  16,   988,  1319,     0,  1700,  900,   12,  12,   0,   1,   0,   0 },
+  /* SFX_GEM        */ {  0,  7,  2,  22,  1319,  1760,  2637,  1500,  400,   15,  14,  25,   0,   0,  13 },
+  /* SFX_HEAL       */ {  0,  3,  0,  44,   587,  1175,     0,  1200,  500,   25,   6,  20,   0,   0,   0 },
+  /* SFX_POWERUP    */ {  0,  0,  0,  40,   523,  1568,     0,  1500,  700,   20,  10,  20,   1,   0,   0 },
+  /* SFX_LEVELUP    */ {  0,  0,  2,  60,   523,   784,  1047,  1600, 1200,   20,   6,   0,   0,   0,  14 },
+  /* SFX_UNLOCK     */ {  0,  5,  2,  24,   440,   659,   880,  1500, 1100,   18,  12,   0,   1,   0,   0 },
+  /* SFX_EXTRALIFE  */ {  0,  0,  2,  44,   784,  1047,  1568,  1600, 1200,   15,   8,  20,   0,   0,  15 },
 
   // -- menus and UI --
-  /* SFX_SELECT   */ {  0,  0,  0,  12,   880,   880,     0,  1200,  200,   0,   0,   0 },
-  /* SFX_CONFIRM  */ {  0,  0,  1,  20,   880,  1319,     0,  1400,  700,   0,   0,   0 },
-  /* SFX_CANCEL   */ {  0,  0,  1,  20,   880,   587,     0,  1400,  500,   0,   0,   0 },
-  /* SFX_DENY     */ {  0,  1,  0,  24,   220,   175,     0,  1500,  300,  14,   0,  55 },
-  /* SFX_BLIP     */ {  0,  0,  0,   8,  1320,  1320,     0,   900,  100,   0,   0,   0 },
+  /* SFX_SELECT     */ {  0,  0,  0,  12,   880,   880,     0,  1200,  200,   15,  18,   0,   2,   0,   0 },
+  /* SFX_CONFIRM    */ {  0,  0,  1,  20,   880,  1319,     0,  1400,  700,   12,  10,   0,   1,   0,   0 },
+  /* SFX_CANCEL     */ {  0,  0,  1,  20,   880,   587,     0,  1400,  500,   12,  10,   0,   1,   0,   0 },
+  /* SFX_DENY       */ {  0,  1,  0,  24,   220,   175,     0,  1500,  300,    0,  14,  55,   2,   0,   0 },
+  /* SFX_BLIP       */ {  0,  0,  0,   8,  1320,  1320,     0,   900,  100,   25,  20,   0,   2,   0,   0 },
+  // TEXT and RELOAD's noise head are the two things here with no LFO at all,
+  // and deliberately: at 5 and 6 ticks the fastest LFO the 120 Hz sequencer can
+  // run gets one sample of its cycle, which is a one-off pitch offset rather
+  // than any kind of movement. What they want instead is to be *identical*
+  // every time, since they fire once per character and once per shot.
+  /* SFX_TEXT       */ {  0,  7,  0,   5,  1760,  1600,     0,   800,    0,    0,   0,   0,   0,   0,   0 },
+  /* SFX_PAUSE      */ {  0,  3,  1,  24,  1047,   698,     0,  1400,  600,   10,   8,  35,   0,   0,   0 },
 
   // -- game state --
-  /* SFX_ALARM    */ {  0,  0,  2,  48,   880,   587,   880,  1500, 1200,   9,   0,  45 },
-  /* SFX_CLEAR    */ {  0,  0,  1,  48,   784,  1568,     0,  1600, 1200,   6,  20,   0 },
-  /* SFX_GAMEOVER */ {  0,  2,  0,  80,   392,   131,     0,  1800,  300,   4,  35,  20 },
+  /* SFX_ALARM      */ {  0,  0,  2,  48,   880,   587,   880,  1500, 1200,    0,   9,  45,   2,   0,   0 },
+  /* SFX_COUNTDOWN  */ {  0,  0,  0,  18,   880,   880,     0,  1500,  300,    0,   6,  15,   0,   0,   0 },
+  /* SFX_START      */ {  0,  0,  1,  30,  1047,  1568,     0,  1700,  900,   15,   9,  20,   1,   0,  16 },
+  /* SFX_CLEAR      */ {  0,  0,  1,  48,   784,  1568,     0,  1600, 1200,   20,   6,  20,   0,   0,   0 },
+  /* SFX_VICTORY    */ {  0,  0,  2,  90,   784,  1047,  1568,  1700, 1300,   20,   7,  20,   0,   0,  17 },
+  /* SFX_GAMEOVER   */ {  0,  2,  0,  80,   392,   131,     0,  1800,  300,   35,   4,  20,   0,   0,   0 },
 
   // -- environment --
-  /* SFX_SPLASH   */ {  1,  0,  0,  24,  3500,   900,     0,     1,    9,   7, 180,   0 },
-  /* SFX_WARP     */ {  0,  4,  0,  36,   300,  2200,     0,  1400,  400,  15,  70,   0 },
+  /* SFX_SPLASH     */ {  1,  0,  0,  24,  1200,   320,     0,     1,    9,  800,   7,   0,   3,   0,   0 },
+  /* SFX_BUBBLE     */ {  0,  4,  0,  14,   300,  1000,     0,  1300,    0,   50,  16,   0,   1,   0,   0 },
+  /* SFX_WIND       */ {  1,  0,  0,  90,   700,   500,     0,     3,   10,  900,   2,   0,   0,   0,   0 },
+  /* SFX_FIRE       */ {  1,  0,  0,  60,   800,   600,     0,     3,    9, 1200,  17,   0,   2,   0,  18 },
+  /* SFX_DOOR       */ {  1,  0,  0,  40,   260,   140,     0,     3,   10,  400,   4,   0,   0,   0,  19 },
+  /* SFX_ENGINE     */ {  0,  1,  0,  60,    95,   115,     0,  1500,  900,   90,  19,  45,   2,   0,  20 },
+  /* SFX_MAGIC      */ {  0,  4,  2,  40,  1568,  2093,  2637,  1400,  300,   80,  15,  30,   0,   0,  21 },
+  /* SFX_WARP       */ {  0,  4,  0,  36,   300,  2200,     0,  1400,  400,   70,  15,  30,   0,   0,   0 },
 };
+
+// The second voice of the presets above, in the order those presets reference
+// it -- 'lay' is 1 + an index into here. A layer is an ordinary SfxDef with two
+// rules: its own 'lay' is always 0 (layers do not nest), and it never picks the
+// noise generator when its parent already has, because there is only one of
+// those. In practice a layer is one of three things -- the pitched body under a
+// noise hit, the noise texture over a pitched one, or the same line an octave
+// or a third away, started a couple of ticks late so the two arrive as one
+// thicker voice rather than as a chorus.
+//
+//                          kind wav mode  tck    hz0    hz1    hz2     v0    v1   lpd  lhz  lvd  lsh  dly  lay
+const SfxDef SFX_LAYER[] = {
+  /*  1 LAND      */   {  0,  3,  0,  12,   130,    60,     0,  1700,    0,    0,   0,   0,   0,   0,   0 },
+  /*  2 DASH      */   {  0,  1,  0,  16,   300,   900,     0,  1000,    0,   25,   7,  30,   0,   0,   0 },
+  /*  3 CHARGE    */   {  0,  3,  0,  54,   202,   906,     0,   500,  900,   20,   5,  20,   1,   6,   0 },
+  /*  4 LASER     */   {  0,  0,  0,  10,  4000,   900,     0,   800,    0,   60,  18,   0,   2,   2,   0 },
+  /*  5 MISSILE   */   {  0,  1,  0,  28,   150,   420,     0,  1100,  200,   35,   8,  35,   0,   0,   0 },
+  /*  6 ZAP       */   {  1,  0,  0,  18,   700,   400,     0,     3,   10,  900,  20,   0,   2,   0,   0 },
+  /*  7 RELOAD    */   {  0,  6,  0,  10,  1600,  1500,     0,  1400,  100,   20,  14,   0,   2,   7,   0 },
+  /*  8 BLOCK     */   {  0,  7,  0,  12,  2640,  2100,     0,   700,    0,   40,  15,   0,   2,   1,   0 },
+  /*  9 CRUSH     */   {  0,  2,  0,  30,   120,    58,     0,  1500,    0,   40,   6,  30,   1,   0,   0 },
+  /* 10 BOOM      */   {  0,  0,  0,  60,   130,    55,     0,  1900,    0,   60,   5,  40,   3,   0,   0 },
+  /* 11 BLAST     */   {  0,  7,  0,  24,   320,    60,     0,  1700,    0,   70,   9,  45,   3,   0,   0 },
+  /* 12 RUMBLE    */   {  0,  2,  0,  90,    82,    58,     0,  1200,    0,   90,   2,  55,   0,   4,   0 },
+  /* 13 GEM       */   {  0,  4,  2,  20,  2637,  3520,  5274,   600,    0,   20,  14,  30,   0,   2,   0 },
+  /* 14 LEVELUP   */   {  0,  3,  2,  56,   659,   988,  1319,   700,  500,   25,   6,  20,   0,   4,   0 },
+  /* 15 EXTRALIFE */   {  0,  7,  2,  40,  1568,  2093,  3136,   600,  400,   20,   8,  25,   0,   4,   0 },
+  /* 16 START     */   {  0,  7,  1,  28,  2093,  3136,     0,   700,  300,   20,   9,  25,   1,   2,   0 },
+  /* 17 VICTORY   */   {  0,  3,  2,  86,   523,   659,  1047,   900,  700,   25,   5,  25,   0,   4,   0 },
+  /* 18 FIRE      */   {  0,  2,  0,  56,   160,   120,     0,   700,    0,   80,   9,  50,   3,   0,   0 },
+  /* 19 DOOR      */   {  0,  5,  0,  36,   150,    90,     0,  1100,    0,   50,   5,  40,   1,   0,   0 },
+  /* 20 ENGINE    */   {  1,  0,  0,  58,   260,   300,     0,     6,    9,  500,  19,   0,   2,   0,   0 },
+  /* 21 MAGIC     */   {  0,  7,  2,  36,  2349,  3136,  3951,   600,    0,  100,  18,  35,   1,   5,   0 },
+};
+
+// Nothing ties a preset's 'lay' to the length of the table above it, so this is
+// what a row that names a layer nobody wrote costs: a dropped second voice
+// rather than a wild FREQ read out of whatever rodata follows.
+const unsigned SFX_LAYERS = sizeof( SFX_LAYER ) / sizeof( SFX_LAYER[0] );
+
 struct SfxVoice {
   const SfxDef* def   = 0;
-  int           tick  = 0;
+  int           tick  = 0;   // negative while the voice is still in its 'dly'
   unsigned      age   = 0;
   bool          active= false;
   u16           phase = 0;   // LFO phase; reset on every retrigger
@@ -445,6 +542,12 @@ void sfx_voice_stop( SfxVoice& v, u32 ch, bool noise ){
 void sfx_voice_step( SfxVoice& v, u32 ch, bool noise ){
   if( !v.active ) return;
   const SfxDef* d = v.def;
+  // A layer starts life with a negative tick count -- that is its 'dly'. It
+  // holds the channel from the moment it is fired (so a following effect steals
+  // some other voice, not this one) but writes nothing to the chip until it
+  // actually begins, which is what keeps the delayed half silent rather than
+  // sounding the tail of whatever was there before.
+  if( v.tick < 0 ){ ++v.tick; return; }
   if( v.tick >= d->ticks ){ sfx_voice_stop( v, ch, noise ); return; }
 
   const int i  = v.tick;
@@ -458,8 +561,8 @@ void sfx_voice_step( SfxVoice& v, u32 ch, bool noise ){
   // starts at zero on every retrigger, so a preset always sounds identical.
   s32 lfo = 0, lfo_v = 0;
   if( d->lhz ){
-    lfo     = lfo_sample    ( 0, v.phase );
-    lfo_v   = lfo_vol_sample( 0, v.phase );
+    lfo     = lfo_sample    ( d->lsh, v.phase );
+    lfo_v   = lfo_vol_sample( d->lsh, v.phase );
     v.phase = (u16)( v.phase + lfo_inc( d->lhz ) );
   }
 
@@ -493,6 +596,30 @@ void sfx_tick(){
   for( int i = 0 ; i < SFX_VOICES ; ++i )
     sfx_voice_step( g_sfx[i], SFX_CH0 + (u32)i, false );
   sfx_voice_step( g_sfx_noise, SFX_NOISE_CH, true );
+}
+
+// Hand one def to the voice that should carry it. There is exactly one noise
+// generator on the effects side, so a noise def always lands on it; a tone def
+// prefers a free voice and otherwise steals the one that has been running
+// longest. Fired twice in a row for a layered preset, the second call cannot
+// pick the voice the first just took (it is now the youngest), which is what
+// puts a two-tone preset on both voices without any bookkeeping.
+void sfx_fire( const SfxDef* d ){
+  SfxVoice* v;
+  if( d->kind == 1 ) v = &g_sfx_noise;
+  else {
+    int pick = -1;
+    for( int i = 0 ; i < SFX_VOICES ; ++i ){
+      if( !g_sfx[i].active ){ pick = i; break; }
+      if( pick < 0 || g_sfx[i].age < g_sfx[pick].age ) pick = i;
+    }
+    v = &g_sfx[pick];
+  }
+  v->def    = d;
+  v->tick   = -(int)d->dly;
+  v->phase  = 0;
+  v->age    = ++g_age;
+  v->active = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1003,28 +1130,12 @@ void sndSfx( SndSfx id ){
   Lock lk;
 
   const SfxDef* d = &SFX[ id ];
-
-  if( d->kind == 1 ){
-    g_sfx_noise.def    = d;
-    g_sfx_noise.tick   = 0;
-    g_sfx_noise.phase  = 0;
-    g_sfx_noise.age    = ++g_age;
-    g_sfx_noise.active = true;
-    return;
-  }
-
-  // Prefer a free voice; otherwise steal the one that has been running longest.
-  int pick = -1;
-  for( int i = 0 ; i < SFX_VOICES ; ++i ){
-    if( !g_sfx[i].active ){ pick = i; break; }
-    if( pick < 0 || g_sfx[i].age < g_sfx[pick].age ) pick = i;
-  }
-
-  g_sfx[pick].def    = d;
-  g_sfx[pick].tick   = 0;
-  g_sfx[pick].phase  = 0;
-  g_sfx[pick].age    = ++g_age;
-  g_sfx[pick].active = true;
+  // The layer is fired first and the main voice second, so that on a preset
+  // whose two halves are both tones the main one is the younger of the pair --
+  // and therefore the one the *next* effect steals last. An interrupted blast
+  // then loses its harmony rather than its body.
+  if( d->lay && d->lay <= SFX_LAYERS ) sfx_fire( &SFX_LAYER[ d->lay - 1 ] );
+  sfx_fire( d );
 }
 
 void sndBgmPlay( const char* t0, const char* t1, const char* t2,

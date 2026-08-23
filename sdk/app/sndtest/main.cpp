@@ -1,4 +1,4 @@
-// Sound helper audition tool: 49 six-track MML pieces and all 27 SFX presets,
+// Sound helper audition tool: 49 six-track MML pieces and all 50 SFX presets,
 // side by side, so both halves of <sound.h> can be listened to and tuned by ear.
 //
 // The music lives in bgm.h, which is where the comment about how a piece is put
@@ -34,14 +34,17 @@
 
 using namespace pico8;
 
-// Same order as enum SndSfx.
+// Same order as enum SndSfx. Nothing here may exceed NAME_W columns, which is
+// what keeps "DOUBLEJUMP" the longest name in the list.
 static const char* SFX_NAME[ SFX_COUNT ] = {
-  "JUMP", "LAND", "STEP", "SWIPE", "SHOOT", "CHARGE",
-  "HIT", "BOUNCE", "BREAK", "BLOCK", "EXPLODE", "DAMAGE",
-  "COIN", "HEAL", "POWERUP", "LEVELUP", "UNLOCK",
-  "SELECT", "CONFIRM", "CANCEL", "DENY", "BLIP",
-  "ALARM", "CLEAR", "GAMEOVER",
-  "SPLASH", "WARP",
+  "JUMP", "DOUBLEJUMP", "LAND", "STEP", "SWIPE", "DASH", "SHOOT", "CHARGE",
+  "LASER", "MISSILE", "ZAP", "RELOAD",
+  "HIT", "BOUNCE", "BREAK", "BLOCK", "CRUSH", "DAMAGE",
+  "EXPLODE", "BOOM", "BLAST", "RUMBLE",
+  "COIN", "GEM", "HEAL", "POWERUP", "LEVELUP", "UNLOCK", "EXTRALIFE",
+  "SELECT", "CONFIRM", "CANCEL", "DENY", "BLIP", "TEXT", "PAUSE",
+  "ALARM", "COUNTDOWN", "START", "CLEAR", "VICTORY", "GAMEOVER",
+  "SPLASH", "BUBBLE", "WIND", "FIRE", "DOOR", "ENGINE", "MAGIC", "WARP",
 };
 
 // Background text grid: 16 tiles across, 30 visible down. Everything sits in

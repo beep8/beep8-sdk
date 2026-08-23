@@ -49,52 +49,80 @@
 /**
  * @brief Preset sound effects for @ref sndSfx.
  *
- * Each one is a short, self-contained blip — pitch sweep, volume envelope and
- * duration are all baked in, so the same event always sounds the same in every
- * game. Pick the one whose *name* matches the game event; do not try to build
- * effects out of several of these at once.
+ * Each one is a short, self-contained blip — waveform, pitch sweep, volume
+ * envelope, an LFO on the pitch and the level, and the duration are all baked
+ * in, so the same event always sounds the same in every game. Some of the
+ * bigger ones are two voices at once (a noise body under a tone, a lead
+ * doubled an octave up), which is why the list has no "layer these two"
+ * entries: pick the one whose *name* matches the game event, and do not try to
+ * build a new effect by firing several of these together.
  */
 enum SndSfx {
   // -- player action --
-  SFX_JUMP,      /**< Short upward chirp — jumping, hopping, springs.        */
-  SFX_LAND,      /**< Low thud — landing, something heavy settling.          */
-  SFX_STEP,      /**< Soft noise scuff — footsteps, rustle.                  */
-  SFX_SWIPE,     /**< Airy whoosh — dashing, a melee swing, a dodge.         */
-  SFX_SHOOT,     /**< Descending zap — firing a shot, lasers.                */
-  SFX_CHARGE,    /**< Long rising hum — charging a shot or a jump.           */
+  SFX_JUMP,       /**< Short upward chirp — jumping, hopping, springs.          */
+  SFX_DOUBLEJUMP, /**< Higher, shorter chirp — the second jump of a double.     */
+  SFX_LAND,       /**< Low thud — landing, something heavy settling.            */
+  SFX_STEP,       /**< Soft noise scuff — footsteps, rustle.                    */
+  SFX_SWIPE,      /**< Airy whoosh — a melee swing, a dodge.                    */
+  SFX_DASH,       /**< Rising whoosh — a dash, a boost, a sudden burst of run.  */
+  SFX_SHOOT,      /**< Descending zap — firing a shot.                          */
+  SFX_CHARGE,     /**< Long rising hum — charging a shot or a jump.             */
+
+  // -- weapons --
+  SFX_LASER,      /**< Bright doubled zap — an energy weapon, a beam.           */
+  SFX_MISSILE,    /**< Rising whoosh with a body — a rocket or missile launch.  */
+  SFX_ZAP,        /**< Electric buzz and crackle — lightning, shocks, tesla.    */
+  SFX_RELOAD,     /**< Click-clack — reloading, cocking, a mechanism latching.  */
 
   // -- impact and destruction --
-  SFX_HIT,       /**< Dry noise tick — bullet connects, small impact.        */
-  SFX_BOUNCE,    /**< Short round blip — ball off a wall or paddle.          */
-  SFX_BREAK,     /**< Bright noise burst — bricks, glass, crates.            */
-  SFX_BLOCK,     /**< Metallic clink — a parry, a shield, a hit that failed. */
-  SFX_EXPLODE,   /**< Long noise burst — explosions, destruction, death.     */
-  SFX_DAMAGE,    /**< Falling buzz — the player taking damage.               */
+  SFX_HIT,        /**< Dry noise tick — bullet connects, small impact.          */
+  SFX_BOUNCE,     /**< Short round blip — ball off a wall or paddle.            */
+  SFX_BREAK,      /**< Bright noise burst — bricks, glass, crates.              */
+  SFX_BLOCK,      /**< Metallic clink — a parry, a shield, a hit that failed.   */
+  SFX_CRUSH,      /**< Heavy grinding crunch — something large flattened.       */
+  SFX_DAMAGE,     /**< Falling buzz — the player taking damage.                 */
+  SFX_EXPLODE,    /**< Mid-sized blast — the everyday explosion.                */
+  SFX_BOOM,       /**< Deep, long, low blast — a big explosion, a bomb.         */
+  SFX_BLAST,      /**< Sharp crack falling into a low tail — a shell, a mine.   */
+  SFX_RUMBLE,     /**< Slow low roar — a distant blast, a collapse.             */
 
   // -- pickups and rewards --
-  SFX_COIN,      /**< Two-note ping — coins, pickups, score.                 */
-  SFX_HEAL,      /**< Soft rise — healing, recovery, a shield going up.      */
-  SFX_POWERUP,   /**< Rising sweep — power-ups, weapon upgrades.             */
-  SFX_LEVELUP,   /**< Three-note rise — levelling up, a milestone.           */
-  SFX_UNLOCK,    /**< Bright three-note — a door, a switch, something opening.*/
+  SFX_COIN,       /**< Two-note ping — coins, pickups, score.                   */
+  SFX_GEM,        /**< Bright crystalline three-note — a gem, a rare drop.      */
+  SFX_HEAL,       /**< Soft rise — healing, recovery, a shield going up.        */
+  SFX_POWERUP,    /**< Rising sweep — power-ups, weapon upgrades.               */
+  SFX_LEVELUP,    /**< Three-note rise in harmony — levelling up, a milestone.  */
+  SFX_UNLOCK,     /**< Bright three-note — a door, a switch, something opening. */
+  SFX_EXTRALIFE,  /**< Octave-doubled rise — a 1UP, an extra life.              */
 
   // -- menus and UI --
-  SFX_SELECT,    /**< Tiny click — moving the cursor between menu items.     */
-  SFX_CONFIRM,   /**< Two-note rise — accepting, starting, OK.               */
-  SFX_CANCEL,    /**< Two-note fall — backing out of a menu.                 */
-  SFX_DENY,      /**< Low buzz — an action that is not allowed right now.    */
-  SFX_BLIP,      /**< Very short neutral blip — text advance, ticks.         */
+  SFX_SELECT,     /**< Tiny click — moving the cursor between menu items.       */
+  SFX_CONFIRM,    /**< Two-note rise — accepting, starting, OK.                 */
+  SFX_CANCEL,     /**< Two-note fall — backing out of a menu.                   */
+  SFX_DENY,       /**< Low buzz — an action that is not allowed right now.      */
+  SFX_BLIP,       /**< Very short neutral blip — advancing a message, ticks.    */
+  SFX_TEXT,       /**< Tiny dry tick — one character of a typewriter crawl.     */
+  SFX_PAUSE,      /**< Two-note chime — pausing and unpausing.                  */
 
   // -- game state --
-  SFX_ALARM,     /**< Alternating two-tone — warning, low health, timer low. */
-  SFX_CLEAR,     /**< Rising two-note fanfare — stage clear, success.        */
-  SFX_GAMEOVER,  /**< Slow descending tone — game over.                      */
+  SFX_ALARM,      /**< Alternating two-tone — warning, low health, timer low.   */
+  SFX_COUNTDOWN,  /**< One flat beep — a tick of a 3-2-1 countdown.             */
+  SFX_START,      /**< Doubled rise — GO!, the round starting.                  */
+  SFX_CLEAR,      /**< Rising two-note fanfare — stage clear, success.          */
+  SFX_VICTORY,    /**< Long fanfare in harmony — winning, the ending.           */
+  SFX_GAMEOVER,   /**< Slow descending tone — game over.                        */
 
   // -- environment --
-  SFX_SPLASH,    /**< Wet noise wash — water, liquid.                        */
-  SFX_WARP,      /**< Fast rising sweep — teleport, warp, entering a pipe.   */
+  SFX_SPLASH,     /**< Wet noise wash — water, liquid.                          */
+  SFX_BUBBLE,     /**< Round rising bloop — bubbles, drips, surfacing.          */
+  SFX_WIND,       /**< Long swirling noise — wind, a storm, an empty place.     */
+  SFX_FIRE,       /**< Crackling noise over a low body — flames, a torch.       */
+  SFX_DOOR,       /**< Low grinding slide — a heavy door or gate moving.        */
+  SFX_ENGINE,     /**< Buzzing motor — a vehicle, a machine, a conveyor.        */
+  SFX_MAGIC,      /**< Shimmering rise — a spell, a sparkle, an enchantment.    */
+  SFX_WARP,       /**< Fast rising sweep — teleport, warp, entering a pipe.     */
 
-  SFX_COUNT      /**< Number of presets (not a sound).                       */
+  SFX_COUNT       /**< Number of presets (not a sound).                         */
 };
 
 /**
@@ -104,7 +132,10 @@ enum SndSfx {
  * Safe to call every frame if you want (it retriggers), safe to call while
  * music is playing, and safe to call more often than there are voices — the
  * oldest effect is dropped to make room. There are two tone voices and one
- * noise voice; the rest of the chip belongs to the music.
+ * noise voice; the rest of the chip belongs to the music. A layered preset
+ * (@ref SFX_BOOM, @ref SFX_VICTORY and friends) takes two of those three at
+ * once, so two big effects on the same frame will clip each other's tails —
+ * which is the right trade for a chip this size, and inaudible in practice.
  *
  * @param id  One of @ref SndSfx.
  */
