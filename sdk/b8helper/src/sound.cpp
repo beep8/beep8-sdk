@@ -4,10 +4,17 @@
  *
  * Layout of the APU, which this file owns end to end:
  *
- *   WSG 0..3   music tracks 0..3      (b8ApuReset() sets MAXCH = 8, so only
- *   WSG 4..7   sound-effect voices     WSG 0..7 are mixed at all)
+ *   WSG 0..5   music tracks 0..5      (b8ApuReset() sets MAXCH = 8, so only
+ *   WSG 6..7   sound-effect voices     WSG 0..7 are mixed at all)
  *   NOISE 0    sound effects
  *   NOISE 1    music, for '@n' drum tracks
+ *
+ * Six of the eight tone channels go to the music because that is what the music
+ * has to spend them on -- a melody, a counter-melody, a three-note chord and a
+ * bass already come to six, and a pair of tracks detuned a few cents apart (see
+ * 'k') costs two of them for one voice. Sound effects need far fewer: they are
+ * short, they rarely overlap more than twice, and a third simultaneous blip is
+ * better dropped than paid for out of the chord.
  *
  * Timing is kept in ticks, one tick being one step of the APU (1/120 s), and
  * subdivided 256 ways below that. Note durations rarely divide evenly into
@@ -44,10 +51,10 @@ namespace {
 // ---------------------------------------------------------------------------
 // Channel policy
 // ---------------------------------------------------------------------------
-const u32 BGM_CH0       = 0;   // WSG 0..3
-const int BGM_TRACKS    = 4;
-const u32 SFX_CH0       = 4;   // WSG 4..7
-const int SFX_VOICES    = 4;
+const u32 BGM_CH0       = 0;   // WSG 0..5
+const int BGM_TRACKS    = 6;
+const u32 SFX_CH0       = 6;   // WSG 6..7
+const int SFX_VOICES    = 2;
 const u32 SFX_NOISE_CH  = 0;
 const u32 BGM_NOISE_CH  = 1;
 
@@ -468,9 +475,12 @@ struct MmlTrack {
 MmlTrack g_trk[ BGM_TRACKS ];
 
 int chvol( int v ){
-  // Roughly perceptual: v=15 -> 2925, v=10 -> 1300, v=8 -> 832. Four tracks at
-  // full tilt then still sit inside the mixer's headroom.
-  const int a = v * v * 13 * g_bgm_vol_pct / 100;
+  // Roughly perceptual: v=15 -> 2025, v=10 -> 900, v=8 -> 576. The mixer sums
+  // every channel as sample(-8..+7) * CHVOL and clamps the total to int16, so
+  // the headroom that matters is how many tracks can line up in phase at once.
+  // The curve is scaled for six of them; a piece that only uses three can push
+  // its 'v' higher to take the room back.
+  const int a = v * v * 9 * g_bgm_vol_pct / 100;
   return clampi( a, 0, B8_APU_CHVOL_MAX );
 }
 
@@ -845,13 +855,12 @@ void bgm_silence(){
 }
 
 // Caller holds g_lock, and has already run ensure_init().
-void bgm_start( const char* t0, const char* t1, const char* t2, const char* t3, bool loop ){
+void bgm_start( const char* const* src, bool loop ){
   bgm_silence();
 
   g_bgm_loop = loop;
   g_tempo    = 120;
 
-  const char* src[ BGM_TRACKS ] = { t0, t1, t2, t3 };
   bool any = false;
   for( int i = 0 ; i < BGM_TRACKS ; ++i ){
     if( !src[i] || !src[i][0] ) continue;
@@ -917,16 +926,20 @@ void sndSfx( SndSfx id ){
   g_sfx[pick].active = true;
 }
 
-void sndBgmPlay( const char* t0, const char* t1, const char* t2, const char* t3 ){
+void sndBgmPlay( const char* t0, const char* t1, const char* t2,
+                 const char* t3, const char* t4, const char* t5 ){
+  const char* src[ BGM_TRACKS ] = { t0, t1, t2, t3, t4, t5 };
   ensure_init();
   Lock lk;
-  bgm_start( t0, t1, t2, t3, true );
+  bgm_start( src, true );
 }
 
-void sndBgmPlayOnce( const char* t0, const char* t1, const char* t2, const char* t3 ){
+void sndBgmPlayOnce( const char* t0, const char* t1, const char* t2,
+                     const char* t3, const char* t4, const char* t5 ){
+  const char* src[ BGM_TRACKS ] = { t0, t1, t2, t3, t4, t5 };
   ensure_init();
   Lock lk;
-  bgm_start( t0, t1, t2, t3, false );
+  bgm_start( src, false );
 }
 
 void sndBgmStop(){

@@ -13,7 +13,7 @@
  *   - @ref sndSfx — fire-and-forget preset sound effects. One call, no state to
  *     keep, no per-frame bookkeeping.
  *   - @ref sndBgmPlay — background music written as MML text (the classic
- *     "t120 o4 l8 cdefg" note-string notation), up to 4 simultaneous tracks,
+ *     "t120 o4 l8 cdefg" note-string notation), up to 6 simultaneous tracks,
  *     each with its own vibrato, tremolo, envelope, sweep and portamento.
  *
  * Nothing needs to be initialised and nothing needs to be ticked. The first
@@ -31,6 +31,8 @@
  *   void _init() override {
  *     sndBgmPlay("t130 o4 l8 v11 q7 mp6,35,120 [ceg>c<]2 [dfa>d<]2",  // melody, with vibrato
  *                "t130 o2 l4 v10 me2 [c c]2 [d d]2",                  // bass, long decay
+ *                "t130 o4 l2 v7  q8 me0 [e]2 [f]2",                   // pad, held flat
+ *                "t130 o4 l2 v7  q8 me0 k7 [g]2 [a]2",                // ... detuned twin
  *                "@n t130 o4 l8 v9 [c r c c]4");                      // drums (noise)
  *   }
  *   void _update() override {
@@ -101,7 +103,8 @@ enum SndSfx {
  * Fire-and-forget: call it on the frame the event happens and forget about it.
  * Safe to call every frame if you want (it retriggers), safe to call while
  * music is playing, and safe to call more often than there are voices — the
- * oldest effect is dropped to make room.
+ * oldest effect is dropped to make room. There are two tone voices and one
+ * noise voice; the rest of the chip belongs to the music.
  *
  * @param id  One of @ref SndSfx.
  */
@@ -110,8 +113,17 @@ void sndSfx( SndSfx id );
 /**
  * @brief Start background music from MML text, looping forever.
  *
- * Up to four tracks play simultaneously; pass @c nullptr (or just omit) for the
- * ones you don't need. Any previously playing music is replaced.
+ * Up to six tracks play simultaneously; pass @c nullptr (or just omit) for the
+ * ones you don't need. Any previously playing music is replaced. Six is enough
+ * for a melody, a counter-melody, a three-note chord and a bass at once, or for
+ * a lead doubled by a second track a few cents away (see @c k) over a smaller
+ * arrangement.
+ *
+ * @note There is only *one* noise generator behind @c \@n. Two tracks that both
+ *       switch to it will overwrite each other's drum hits, so keep the
+ *       percussion on a single track — and note that a track which has gone
+ *       @c \@n leaves its own tone channel silent, so a piece with drums has
+ *       five melodic voices and one drum track rather than six and one.
  *
  * @warning The strings are read as the music plays, so they must stay alive for
  *          as long as the music does. String literals (the normal case) always
@@ -165,14 +177,18 @@ void sndSfx( SndSfx id );
  * @c v gave it.
  *
  * @param t0  Track 0 (usually the melody). Required.
- * @param t1  Track 1 (usually bass or harmony), or @c nullptr.
- * @param t2  Track 2, or @c nullptr.
- * @param t3  Track 3 (often @c \@n drums), or @c nullptr.
+ * @param t1  Track 1 (usually the bass), or @c nullptr.
+ * @param t2  Track 2 (usually harmony), or @c nullptr.
+ * @param t3  Track 3, or @c nullptr.
+ * @param t4  Track 4, or @c nullptr.
+ * @param t5  Track 5 (often @c \@n drums), or @c nullptr.
  */
 void sndBgmPlay( const char* t0,
                  const char* t1 = 0,
                  const char* t2 = 0,
-                 const char* t3 = 0 );
+                 const char* t3 = 0,
+                 const char* t4 = 0,
+                 const char* t5 = 0 );
 
 /**
  * @brief Same as @ref sndBgmPlay, but stops at the end instead of looping.
@@ -183,7 +199,9 @@ void sndBgmPlay( const char* t0,
 void sndBgmPlayOnce( const char* t0,
                      const char* t1 = 0,
                      const char* t2 = 0,
-                     const char* t3 = 0 );
+                     const char* t3 = 0,
+                     const char* t4 = 0,
+                     const char* t5 = 0 );
 
 /** @brief Stop the music immediately (sound effects keep working). */
 void sndBgmStop();

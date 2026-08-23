@@ -337,7 +337,7 @@ Presets, grouped by the kind of game event:
 
 | Function | Notes |
 |---|---|
-| `sndBgmPlay(t0, t1, t2, t3)` | Up to 4 tracks, loops forever. `t1`–`t3` are optional. |
+| `sndBgmPlay(t0, …, t5)` | Up to 6 tracks, loops forever. `t1`–`t5` are optional. |
 | `sndBgmPlayOnce(t0, …)` | Same, but stops at the end — for jingles. |
 | `sndBgmStop()` / `sndBgmIsPlaying()` | Stop / query. |
 | `sndBgmVolume(pct)` / `sndSfxVolume(pct)` | Master trims, 0–100. |
@@ -354,7 +354,7 @@ playback — string literals or statics, never a local buffer.
 | `v10` | Volume 0–15. |
 | `q6` | Gate 1–8 — the note sounds for `q/8` of its length. 8 = legato. |
 | `@0` | Waveform 0–7 (0 pulse, 1 saw, 2–7 shaped). |
-| `@n` | Switch the track to the noise generator, for drums. Low octaves read as kicks, high ones as hats. |
+| `@n` | Switch the track to the noise generator, for drums. Low octaves read as kicks, high ones as hats. Only one track at a time — there is a single noise generator, and the track's own tone channel goes silent. |
 | `cdefgab` | A note; optional `+`/`#`/`-`, then a length (`c16`), then dots (`c4.`). |
 | `r` / `^` | Rest / tie. |
 | `[ … ]4` | Repeat 4 times (nests 4 deep). |
@@ -380,10 +380,16 @@ LFO shapes are `0` sine (default), `1` triangle, `2` square — a trill, not a w
 smooth range and 20 Hz is the ceiling. On an `@n` noise track only `mp` does anything: that
 generator's volume moves in 6 dB steps, too coarse for a tremolo or an envelope.
 
+Six tracks is a melody, a counter-melody, a three-note chord and a bass at once — or a
+lead doubled by a second track a few cents away (`k`) over a smaller arrangement. Sound
+effects get the remaining two tone voices plus the effects noise generator.
+
 ```cpp
 void _init() override {
   sndBgmPlay("t130 o5 l8 v10 q6 mp6,35,150 [ c e g > c < ]2",  // melody, with vibrato
              "t130 o3 l4 v11 @1 me2 [ c c g g ]2",             // bass, long decay
+             "t130 o4 l2 v6  q8 @2 me0 [ e g ]2",              // pad, held flat
+             "t130 o4 l2 v6  q8 @2 me0 k8 [ e g ]2",           // ... detuned twin
              0,                                                // (unused)
              "@n t130 o5 l8 v9 [ c r > c < c ]4");             // drums
 }
