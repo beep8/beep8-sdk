@@ -20,10 +20,17 @@
 // matter how much of it there is, whereas sprite text re-issues one sprite per
 // glyph every frame.
 //
-// The two lists are only re-written when something actually changes, and moving
-// a selection re-writes just the two rows that changed rather than the whole
-// screen: a full 30-line repaint costs ~66k cycles, a whole frame's budget, so
-// doing one per keypress visibly drops a frame.
+// UI SHAPE: BGM and SE are two horizontal selectors stacked one above the
+// other. Up/down picks which of the two you are on, left/right walks that
+// one's list -- and the list is drawn along that same horizontal axis, the
+// name sitting between a '<' and a '>'. The two used to be vertical scrolling
+// columns, which put the list at right angles to the key that moved it; the
+// point of this layout is that each axis is driven by the keys pointing along
+// it.
+//
+// Nothing is re-drawn unless something actually changed: a full 30-line
+// repaint costs ~66k cycles, a whole frame's budget, so doing one per keypress
+// visibly drops a frame. A move here repaints three short rows instead.
 #include <pico8.h>
 #include <sound.h>
 #include <sys/time.h>
@@ -1189,22 +1196,30 @@ static const BgmDef BGM_DEFS[] = {
 };
 static const int BGM_COUNT = (int)( sizeof(BGM_DEFS) / sizeof(BGM_DEFS[0]) );
 
-// Background text grid: 16 tiles across, 30 visible down. Two list panes, one
-// above the other, so up/down picks which list you are in and left/right moves
-// inside it -- the same two keys mean the same thing in both halves.
-static const int ROW_TITLE   = 0;
-static const int ROW_STATS   = 1;
-static const int ROW_BGM_HDR = 3;
-static const int BGM_TOP     = 4;
-static const int BGM_ROWS    = 11;
-static const int ROW_SFX_HDR = 16;
-static const int SFX_TOP     = 17;
-static const int SFX_ROWS    = 9;
-static const int ROW_HELP    = 27;
+// Background text grid: 16 tiles across, 30 visible down. Two selectors, BGM
+// above SE, each one laid out along the axis of the key that drives it: the
+// name sits between a '<' and a '>' and left/right walks it, so the arrows the
+// eye follows are the arrows the thumb presses. Each selector owns three rows
+// -- label, name, position bar.
+static const int ROW_TITLE = 0;
+static const int ROW_STATS = 1;
+static const int BGM_ROW   = 7;
+static const int SE_ROW    = 15;
+static const int ROW_HELP  = 25;
+
+static const int NAME_W    = 14;      // columns 1..14, between the two arrows
+
+// Which selector a tap lands on. The bands are far taller than the three rows
+// each selector actually draws, because a finger on a 128px-wide screen is not
+// a mouse pointer: everything above the midline is the BGM row.
+static const int BGM_HIT_TOP = 4,  BGM_HIT_BOT = 11;
+static const int SE_HIT_TOP  = 12, SE_HIT_BOT  = 20;
+static const int HIT_LEFT    = 3;     // x <= this taps the '<' arrow
+static const int HIT_RIGHT   = 12;    // x >= this taps the '>' arrow
 
 // Only four background palettes exist, so they carry four meanings: yellow is
-// "a header, or the cursor of the pane you are not in", peach is "the pane you
-// are in", lavender is everything secondary.
+// the chrome of the selector you are on, peach the name it is showing,
+// lavender everything you are not on.
 static const int PAL_HEAD  = 1;       // WHITE -> YELLOW
 static const int PAL_SEL   = 2;       // WHITE -> LIGHT_PEACH
 static const int PAL_DIM   = 3;       // WHITE -> LAVENDER
@@ -1227,34 +1242,40 @@ static u64 now_ns(){
   return (u64)ts.tv_sec * NS_PER_SEC + (u64)ts.tv_nsec;
 }
 
-// One scrolling list. Both panes are the same thing at different sizes, which
+// Centre s into w columns of dst (not terminated). The blank padding is the
+// working part: rows are repainted in place, so it is what erases the longer
+// name that was there before.
+static void center( char* dst, int w, const char* s ){
+  int n = 0;
+  while( s[n] ) ++n;
+  if( n > w ) n = w;
+  const int pad = ( w - n ) / 2;
+  for( int i = 0 ; i < w ; ++i ) dst[i] = ' ';
+  for( int i = 0 ; i < n ; ++i ) dst[ pad + i ] = s[i];
+}
+
+// One horizontal selector. Both are the same thing at different lengths, which
 // is the point of the layout: the keys do not change meaning between them.
-struct Pane {
-  const int count, hdr, top_row, rows;
-  int cur, top;
-  int drawn_cur, drawn_top;       // what the tilemap currently shows
-
-  Pane( int c, int h, int r0, int n )
-    : count(c), hdr(h), top_row(r0), rows(n),
-      cur(0), top(0), drawn_cur(-1), drawn_top(-1) {}
-
-  void move( int d ){
-    cur = ( cur + count + d ) % count;
-    if( cur <  top )              top = cur;
-    if( cur >= top + rows )       top = cur - rows + 1;
-    if( top >  count - rows )     top = count - rows;
-    if( top <  0 )                top = 0;
-  }
+// Wrapping is deliberate -- with no list on screen to see the end of, falling
+// off one end and reappearing at the other is the cheapest way to reach the
+// far side of 48 entries.
+struct Sel {
+  const int count;
+  int cur;
+  explicit Sel( int c ) : count(c), cur(0) {}
+  void move( int d ){ cur = ( cur + count + d ) % count; }
 };
 
 class App : public Pico8 {
 public:
-  Pane bgm = Pane( BGM_COUNT, ROW_BGM_HDR, BGM_TOP, BGM_ROWS );
-  Pane sfx = Pane( SFX_COUNT, ROW_SFX_HDR, SFX_TOP, SFX_ROWS );
+  Sel bgm = Sel( BGM_COUNT );
+  Sel sfx = Sel( SFX_COUNT );
 
-  int  focus       = 0;               // 0 = the BGM pane, 1 = the SE pane
+  int  focus       = 0;               // 0 = the BGM selector, 1 = the SE one
+  int  drawn_bgm   = -1;              // what the tilemap currently shows
+  int  drawn_sfx   = -1;
   int  drawn_focus = -1;
-  bool drawn_on    = false;           // ... and whether the header said "ON"
+  bool drawn_on    = false;           // ... and whether the label said "ON"
   bool dirty       = true;
   bool first_draw  = true;
 
@@ -1277,11 +1298,13 @@ public:
     t_prev = now_ns();
   }
 
-  Pane& pane( int p ){ return ( p == 0 ) ? bgm : sfx; }
+  Sel& sel( int p ){ return ( p == 0 ) ? bgm : sfx; }
 
   static const char* itemName( int p, int i ){
     return ( p == 0 ) ? BGM_DEFS[i].name : SFX_NAME[i];
   }
+
+  static int selRow( int p ){ return ( p == 0 ) ? BGM_ROW : SE_ROW; }
 
   void playSfx(){ sndSfx( (SndSfx)sfx.cur ); }
 
@@ -1290,21 +1313,23 @@ public:
     sndBgmPlay( b.t[0], b.t[1], b.t[2], b.t[3], b.t[4], b.t[5] );
   }
 
+  // Auditioning means hearing it, so landing on an entry plays it rather than
+  // waiting to be asked. d == 0 re-plays whatever is already selected.
+  void pick( int p, int d ){
+    sel( p ).move( d );
+    if( p == 0 ) playBgm(); else playSfx();
+  }
+
   void _update() override {
     t_enter    = now_ns();
     sum_frame += t_enter - t_prev;
     t_prev     = t_enter;
 
-    // Two panes, so either vertical key just swaps between them.
+    // Two rows, so either vertical key just swaps between them.
     if( btnp(BUTTON_UP) || btnp(BUTTON_DOWN) ) focus ^= 1;
 
     const int d = ( btnp(BUTTON_RIGHT) ? 1 : 0 ) - ( btnp(BUTTON_LEFT) ? 1 : 0 );
-    if( d ){
-      // Auditioning means hearing it, so moving the cursor plays the new
-      // selection rather than waiting to be asked.
-      pane( focus ).move( d );
-      if( focus == 0 ) playBgm(); else playSfx();
-    }
+    if( d ) pick( focus, d );
 
     if( btnp(BUTTON_O) ) playSfx();
     if( btnp(BUTTON_X) ){
@@ -1314,56 +1339,61 @@ public:
     }
 
     if( btnp(BUTTON_MOUSE_LEFT) ){
-      // Background text is on the tile grid, so a tap maps to a row by /8.
+      // Background text is on the tile grid, so a tap maps to a cell by /8.
+      const int x = ( (int)mousex() ) / 8;
       const int y = ( (int)mousey() ) / 8;
-      int row = y - BGM_TOP;
-      if( row >= 0 && row < BGM_ROWS && bgm.top + row < BGM_COUNT ){
-        focus = 0; bgm.cur = bgm.top + row; playBgm();
-      } else {
-        row = y - SFX_TOP;
-        if( row >= 0 && row < SFX_ROWS && sfx.top + row < SFX_COUNT ){
-          focus = 1; sfx.cur = sfx.top + row; playSfx();
-        }
+      int p = -1;
+      if     ( y >= BGM_HIT_TOP && y <= BGM_HIT_BOT ) p = 0;
+      else if( y >= SE_HIT_TOP  && y <= SE_HIT_BOT  ) p = 1;
+      if( p >= 0 ){
+        // The arrows are the buttons a touch screen has; a tap between them
+        // means "this row", which is a focus move and a re-audition.
+        focus = p;
+        pick( p, x <= HIT_LEFT ? -1 : ( x >= HIT_RIGHT ? 1 : 0 ) );
       }
     }
   }
 
-  // One list row. The %-11s matters: rows are repainted in place, so a shorter
-  // name has to erase the longer one that was there.
-  void drawRow( int p, int i ){
-    Pane& pn = pane( p );
-    if( i < pn.top || i >= pn.top + pn.rows || i < 0 || i >= pn.count ) return;
-    const bool sel = ( i == pn.cur );
-    const int  col = !sel ? PAL_DIM : ( focus == p ? PAL_SEL : PAL_HEAD );
-    cursor( 1, pn.top_row + i - pn.top, (BgPal)col );
-    print( "%c%-11s", sel ? '>' : ' ', itemName( p, i ) );
-  }
-
-  void drawHdr( int p ){
-    Pane& pn = pane( p );
+  void drawSel( int p ){
+    Sel& s = sel( p );
     const bool f = ( focus == p );
-    cursor( 0, pn.hdr, f ? (BgPal)PAL_SEL : (BgPal)PAL_HEAD );
-    if( p == 0 ) print( "%cBGM %2d/%d %s", f ? '>' : ' ', pn.cur + 1, pn.count,
-                        sndBgmIsPlaying() ? "ON " : "OFF" );
-    else         print( "%cSE  %2d/%d    ", f ? '>' : ' ', pn.cur + 1, pn.count );
-  }
+    const int  r = selRow( p );
 
-  void drawList( int p ){
-    Pane& pn = pane( p );
-    for( int r = 0 ; r < pn.rows ; ++r ) drawRow( p, pn.top + r );
-    cursor( 14, pn.top_row,               BG_PAL_0 );
-    print( pn.top > 0 ? "^" : " " );
-    cursor( 14, pn.top_row + pn.rows - 1, BG_PAL_0 );
-    print( pn.top + pn.rows < pn.count ? "v" : " " );
+    // Label row. The trailing blanks matter here as much as anywhere: "OFF"
+    // has to cover the "ON " that was there, and " 9/48" the "10/48".
+    cursor( 0, r, f ? (BgPal)PAL_HEAD : (BgPal)PAL_DIM );
+    if( p == 0 ) print( "%cBGM  %2d/%d %s", f ? '>' : ' ', s.cur + 1, s.count,
+                        sndBgmIsPlaying() ? "ON " : "OFF" );
+    else         print( "%cSE   %2d/%d    ", f ? '>' : ' ', s.cur + 1, s.count );
+
+    // Name row, printed as one string so the two arrows stay at fixed columns
+    // whatever the name between them is.
+    char line[ NAME_W + 3 ];
+    line[0] = '<';
+    center( line + 1, NAME_W, itemName( p, s.cur ) );
+    line[ NAME_W + 1 ] = '>';
+    line[ NAME_W + 2 ] = 0;
+    cursor( 0, r + 1, f ? (BgPal)PAL_SEL : (BgPal)PAL_DIM );
+    print( "%s", line );
+
+    // How far along the list you are, drawn along the same axis you move on.
+    // It is the only thing left saying there are 48 of these, now that they
+    // are no longer all on screen at once.
+    char bar[ NAME_W + 1 ];
+    for( int i = 0 ; i < NAME_W ; ++i ) bar[i] = '-';
+    bar[ s.count > 1 ? s.cur * ( NAME_W - 1 ) / ( s.count - 1 ) : 0 ] = '#';
+    bar[ NAME_W ] = 0;
+    cursor( 1, r + 2, f ? (BgPal)PAL_HEAD : (BgPal)PAL_DIM );
+    print( "%s", bar );
   }
 
   void drawAll(){
     print( "\e[2J" );                 // clear the whole background text plane
     cursor( 1, ROW_TITLE, (BgPal)PAL_HEAD ); print( "SNDTEST" );
-    drawHdr( 0 ); drawList( 0 );
-    drawHdr( 1 ); drawList( 1 );
-    cursor( 1, ROW_HELP,     (BgPal)PAL_DIM ); print( "UP/DN  FOCUS" );
-    cursor( 1, ROW_HELP + 1, (BgPal)PAL_DIM ); print( "L/R    PICK" );
+    drawSel( 0 );
+    drawSel( 1 );
+    cursor( 1, ROW_HELP,     (BgPal)PAL_DIM ); print( "UP/DN  BGM/SE" );
+    cursor( 1, ROW_HELP + 1, (BgPal)PAL_DIM ); print( "L/R    SELECT" );
     cursor( 1, ROW_HELP + 2, (BgPal)PAL_DIM ); print( "Z SE   X BGM" );
   }
 
@@ -1378,32 +1408,21 @@ public:
       first_draw = false;
     }
 
-    const bool on = sndBgmIsPlaying();
+    const bool on   = sndBgmIsPlaying();
+    const bool swap = ( focus != drawn_focus );   // both rows change colour
 
     if( dirty ){
       drawAll();
       dirty = false;
     } else {
-      for( int p = 0 ; p < 2 ; ++p ){
-        Pane& pn = pane( p );
-        if( pn.top != pn.drawn_top ){
-          // The window scrolled, so every row of this pane is stale.
-          drawHdr( p ); drawList( p );
-        } else if( pn.cur != pn.drawn_cur || focus != drawn_focus ){
-          // Only the highlight moved, or changed pane: the two rows that
-          // changed colour plus this pane's header is all that is stale.
-          drawHdr( p );
-          if( pn.drawn_cur != pn.cur ) drawRow( p, pn.drawn_cur );
-          drawRow( p, pn.cur );
-        }
-      }
-      if( on != drawn_on ) drawHdr( 0 );
+      if( swap || bgm.cur != drawn_bgm || on != drawn_on ) drawSel( 0 );
+      if( swap || sfx.cur != drawn_sfx )                   drawSel( 1 );
     }
 
-    bgm.drawn_cur = bgm.cur; bgm.drawn_top = bgm.top;
-    sfx.drawn_cur = sfx.cur; sfx.drawn_top = sfx.top;
-    drawn_focus   = focus;
-    drawn_on      = on;
+    drawn_bgm   = bgm.cur;
+    drawn_sfx   = sfx.cur;
+    drawn_focus = focus;
+    drawn_on    = on;
 
     if( ++nsample >= STAT_WIN ){
       // fps  = how many frame periods fit in a second
