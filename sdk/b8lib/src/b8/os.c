@@ -396,8 +396,6 @@ static  void* _b8IdleThread( void* arg ){
 }
 
 static  void* _b8MainThread( void* arg ){
-  b8SysPuts( "_b8MainThread:\n" );
-
   (void)arg;
   int ret = sem_init(_Config.sem_heap, 0, 1);
   KPANIC( ret >= 0 , "sem_init()" );
@@ -780,10 +778,6 @@ int  b8OsReset( b8OsConfig* cfg_ ){
   b8OsPid main_th;
   ret = _b8OsThreadCreate( &main_th,NULL,CONFIG_BYTESIZE_OF_STACK_MAIN_THREAD, _b8MainThread , NULL, B8_OS_SCHED_RR , B8_OS_NOT_USING_IRQ );
   if( ret < 0 ) return ret;
-
-  b8SysPuts( "b8os heap:" );
-  b8SysPutHex( _UpMemoryPool );
-  b8SysPutCR();
 
   ret = _b8OsIrqAttach(_IrqTimer,_b8OsIrqDispatch,NULL);
   if( ret < 0 ) return ret;
