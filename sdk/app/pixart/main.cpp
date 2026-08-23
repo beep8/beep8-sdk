@@ -11,9 +11,9 @@
 //   row C = Flip-H / Flip-V / Mirror ... plus, right-aligned across rows C and D,
 //   a boxed 2x2 transfer block: [Save Load] over [Download Import];
 //   row D = Undo / Redo ... [Download Import] (see above).
-// Fill and Cut/Copy/Paste only function in one zoom mode each (Fill in PIXEL,
-// Cut/Copy/Paste in OVERVIEW), so btnHidden() drops the other trio from the
-// toolbar entirely rather than showing it greyed-out and untappable.
+// Pen/Hand/Eyedropper/Fill only function in PIXEL, Cut/Copy/Paste only in
+// OVERVIEW, so btnHidden() drops the trio that can't act in the current zoom
+// mode from the toolbar entirely rather than showing it greyed-out.
 // Undo/Redo keep up to UNDO_MAX steps. Cut/Copy/Paste act on the current 16x16
 // viewport tile in OVERVIEW mode; the two flips mirror it in either mode (the
 // visible slice in PIXEL, the white box in OVERVIEW). Mirror is a persistent
@@ -666,13 +666,17 @@ class PixArt : public Pico8 {
 
   // The local-file row has no meaning when a page owns the file: it is neither
   // drawn nor tappable there (the sync is automatic -- see pumpHost()).
-  // Fill/Cut/Copy/Paste are hard-disabled by the current zoom mode (not by any
-  // transient state), so instead of dimming them they are hidden outright, same
-  // as the hosted-mode file row -- fewer icons on screen reads clearer than a
-  // greyed-out one that can never be tapped in this mode.
+  // Pen/Hand/Eye/Fill/Cut/Copy/Paste are hard-disabled by the current zoom mode
+  // (not by any transient state), so instead of dimming them they are hidden
+  // outright, same as the hosted-mode file row -- fewer icons on screen reads
+  // clearer than a greyed-out one that can never be tapped in this mode.
+  // Pen/Hand/Eye/Fill still work as *tool selectors* while in OVERVIEW (the
+  // choice sticks for when PIXEL is entered again), but nothing on screen
+  // reacts to them there -- OVERVIEW drag only pans the viewport box -- so
+  // they read as dead buttons and are hidden along with Fill.
   bool btnHidden(int id) const {
     if (hosted && (id == B_DL || id == B_IMPORT)) return true;
-    if (overview && id == B_FILL) return true;                          // 1x: view-only, no fill
+    if (overview && (id == B_PEN || id == B_HAND || id == B_EYE || id == B_FILL)) return true; // 1x: view-only
     if (!overview && (id == B_CUT || id == B_COPY || id == B_PASTE)) return true; // 8x: overview only
     return false;
   }
@@ -916,8 +920,8 @@ class PixArt : public Pico8 {
       if (btnHidden(id)) continue;             // hosted: no local-file row
       Color fg = BLACK;
       switch (id) {
-        // Fill joins the tool trio: btnHidden() already keeps it off screen in
-        // OVERVIEW, so here it is just another selectable tool.
+        // All four are hidden outright in OVERVIEW (btnHidden), so once here
+        // they are always PIXEL-mode selectable tools.
         case B_PEN: case B_HAND: case B_EYE: case B_FILL:
           fg = (id == tool) ? BLACK : LIGHT_GREY; break;
         case B_UNDO:  if (uCount == 0)               fg = LIGHT_GREY; break;
@@ -954,10 +958,10 @@ class PixArt : public Pico8 {
     }
     // light-grey box grouping the mutually-exclusive tools (drawn over the
     // button panels so its left edge stays visible at column 0). Top edge nudged
-    // up 1px (BARA_Y-2) for a touch more breathing room above the icons. In
-    // OVERVIEW, Fill is hidden (btnHidden), so the box closes up around the
-    // remaining Pen/Hand/Eye trio instead of leaving a gap over empty space.
-    rect(0, BARA_Y - 2, (overview ? 2 : 3) * PITCH + ICON + 1, BARA_Y + ICON + 1, LIGHT_GREY);
+    // up 1px (BARA_Y-2) for a touch more breathing room above the icons. All
+    // four (Pen/Hand/Eye/Fill) are hidden in OVERVIEW (btnHidden), so there is
+    // nothing left to box there -- skip it rather than draw an empty frame.
+    if (!overview) rect(0, BARA_Y - 2, 3 * PITCH + ICON + 1, BARA_Y + ICON + 1, LIGHT_GREY);
     // light-grey box grouping the 8x/1x zoom pair (same mutually-exclusive
     // convention as the tool-trio box above, right-aligned instead of left).
     rect(SCRW - ICON - PITCH - 2, BARA_Y - 2, SCRW, BARA_Y + ICON + 1, LIGHT_GREY);
