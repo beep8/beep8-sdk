@@ -358,15 +358,34 @@ playback — string literals or statics, never a local buffer.
 | `cdefgab` | A note; optional `+`/`#`/`-`, then a length (`c16`), then dots (`c4.`). |
 | `r` / `^` | Rest / tie. |
 | `[ … ]4` | Repeat 4 times (nests 4 deep). |
+| `n60` | A note by absolute key number 0–95 (48 = `o4 a` = A4 440 Hz). A length needs a comma: `n60,16`. |
 
 Whitespace and `|` are ignored.
 
+Per-track voicing. These stay set until changed, so they normally sit at the head of a
+track:
+
+| MML | Meaning |
+|---|---|
+| `mp6,40` | Vibrato: 6 Hz, ±40 cents. Full form `mp<hz>,<cents>,<delay_ms>,<shape>`; `mp0` off. |
+| `mv5,50` | Tremolo: 5 Hz, dipping 50 % at the bottom of each cycle. Same arguments; `mv0` off. |
+| `me4` | Volume envelope decay 0–15. `me0` holds the level for the whole note (organ, pad); `me12` is a hard pluck. Default 6. |
+| `me0,300` | … with a 300 ms fade-in: `me<decay>,<attack_ms>`. |
+| `ms-600` | Pitch sweep in cents per second from the start of every note. Negative falls; `ms0` off. |
+| `mg80` | Portamento: each note slides in from the previous one over 80 ms. `mg0` off. |
+| `k-8` | Detune the track by ±cents. Two tracks a few cents apart read as one thick voice. |
+
+LFO shapes are `0` sine (default), `1` triangle, `2` square — a trill, not a waver — and
+`3` a falling ramp. Both LFOs are sampled on the sequencer's 120 Hz tick, so 1–10 Hz is the
+smooth range and 20 Hz is the ceiling. On an `@n` noise track only `mp` does anything: that
+generator's volume moves in 6 dB steps, too coarse for a tremolo or an envelope.
+
 ```cpp
 void _init() override {
-  sndBgmPlay("t130 o5 l8 v10 q6 [ c e g > c < ]2",   // melody
-             "t130 o3 l4 v11 @1 [ c c g g ]2",       // bass
-             0,                                      // (unused)
-             "@n t130 o5 l8 v9 [ c r > c < c ]4");    // drums
+  sndBgmPlay("t130 o5 l8 v10 q6 mp6,35,150 [ c e g > c < ]2",  // melody, with vibrato
+             "t130 o3 l4 v11 @1 me2 [ c c g g ]2",             // bass, long decay
+             0,                                                // (unused)
+             "@n t130 o5 l8 v9 [ c r > c < c ]4");             // drums
 }
 void _update() override { if( btnp(BUTTON_O) ) sndSfx(SFX_JUMP); }
 ```

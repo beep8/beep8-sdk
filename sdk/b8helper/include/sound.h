@@ -13,7 +13,8 @@
  *   - @ref sndSfx — fire-and-forget preset sound effects. One call, no state to
  *     keep, no per-frame bookkeeping.
  *   - @ref sndBgmPlay — background music written as MML text (the classic
- *     "t120 o4 l8 cdefg" note-string notation), up to 4 simultaneous tracks.
+ *     "t120 o4 l8 cdefg" note-string notation), up to 4 simultaneous tracks,
+ *     each with its own vibrato, tremolo, envelope, sweep and portamento.
  *
  * Nothing needs to be initialised and nothing needs to be ticked. The first
  * call that actually asks for a sound resets the APU and starts a small
@@ -28,9 +29,9 @@
  *
  * @code
  *   void _init() override {
- *     sndBgmPlay("t130 o4 l8 v11 q7 [ceg>c<]2 [dfa>d<]2",   // melody
- *                "t130 o2 l4 v10 [c c]2 [d d]2",            // bass
- *                "@n t130 o4 l8 v9 [c r c c]4");            // drums (noise)
+ *     sndBgmPlay("t130 o4 l8 v11 q7 mp6,35,120 [ceg>c<]2 [dfa>d<]2",  // melody, with vibrato
+ *                "t130 o2 l4 v10 me2 [c c]2 [d d]2",                  // bass, long decay
+ *                "@n t130 o4 l8 v9 [c r c c]4");                      // drums (noise)
  *   }
  *   void _update() override {
  *     if( btnp(BUTTON_O) ) sndSfx(SFX_JUMP);
@@ -135,6 +136,33 @@ void sndSfx( SndSfx id );
  * | @c r         | A rest, with the same optional length (@c r4).                 |
  * | @c ^         | Tie: extend the previous note by another length (@c c4^8).     |
  * | @c [ … ]4    | Repeat the bracketed part 4 times (2 if the count is omitted). Nests up to 4 deep. |
+ * | @c n60       | A note by absolute key number, 0–95 (48 = @c o4&nbsp;a = A4 440 Hz). A length needs a comma: @c n60,16. |
+ *
+ * ### Shaping the sound
+ *
+ * These are per-track and stay set until changed, so they normally sit at the
+ * head of a track — though changing one mid-track is how a voice changes
+ * character partway through a piece.
+ *
+ * | Command       | Meaning                                                      |
+ * |---------------|--------------------------------------------------------------|
+ * | @c mp6,40     | Vibrato: 6 Hz, ±40 cents. Full form @c mp&lt;hz&gt;,&lt;cents&gt;,&lt;delay_ms&gt;,&lt;shape&gt; — the last two are optional. @c mp0 turns it off. |
+ * | @c mv5,50     | Tremolo: 5 Hz, dipping 50 % at the bottom of each cycle. Same four arguments. @c mv0 turns it off. |
+ * | @c me4        | Volume envelope decay, 0–15. @c me0 holds the level for the whole note (organ, pad); higher decays faster, @c me12 is a hard pluck. Default 6. |
+ * | @c me0,300    | … with a 300 ms fade-in: @c me&lt;decay&gt;,&lt;attack_ms&gt;. |
+ * | @c ms-600     | Pitch sweep, in cents per second, from the start of every note. Negative falls, positive rises. @c ms0 off. |
+ * | @c mg80       | Portamento: every note slides in from the previous one over 80 ms. @c mg0 off. |
+ * | @c k-8        | Detune the whole track by ±cents (−2400…2400). Two tracks a few cents apart read as one thick voice. |
+ *
+ * LFO shapes are @c 0 sine (the default), @c 1 triangle, @c 2 square — that is
+ * a trill rather than a waver — and @c 3 a falling ramp.
+ *
+ * Both LFOs are sampled on the sequencer's own 120 Hz tick, so 1–10 Hz is the
+ * range that sounds like a smooth waver; past that it becomes a deliberately
+ * stepped effect, and 20 Hz is the ceiling. On an @c \@n noise track only
+ * @c mp does anything: that generator's volume moves in 6 dB steps, far too
+ * coarse for a tremolo or an envelope, so a drum keeps the flat level its
+ * @c v gave it.
  *
  * @param t0  Track 0 (usually the melody). Required.
  * @param t1  Track 1 (usually bass or harmony), or @c nullptr.

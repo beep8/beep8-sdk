@@ -31,7 +31,7 @@ static const char* SFX_NAME[ SFX_COUNT ] = {
   "SPLASH", "WARP",
 };
 
-// 8 short BGM loops, each a 4-track MML piece (melody / bass / harmony / drum;
+// 12 short BGM loops, each a 4-track MML piece (melody / bass / harmony / drum;
 // harmony and drum are nullptr where a leaner arrangement sounds better). Each
 // track's total note length is kept equal (or an even multiple) across the
 // active tracks in a pattern, since every track loops back to its own start
@@ -40,6 +40,11 @@ static const char* SFX_NAME[ SFX_COUNT ] = {
 // MINOR / ACTION / AMBIENT / SUSPENSE lean on a fast broken-chord bass
 // (arpeggio) rather than block chords, per the brief asking for a few tracks
 // with the bass carrying an arpeggio.
+//
+// The first eight use nothing but notes, so they are also the control group for
+// anyone tuning the sequencer. The last four exist to audition one modulation
+// command each -- vibrato, the volume envelope, portamento and sweep, detune --
+// against those: see the "Shaping the sound" table in sound.h.
 struct BgmDef {
   const char* name;
   const char* t0;   // melody
@@ -96,6 +101,32 @@ static const BgmDef BGM_DEFS[] = {
     "t150 o3 l4 v12 q6 @1 [ c c g g ]4",
     "t150 o4 l1 v7  q8 @2 [ e | c ]2",
     "@n t150 o5 l8 v9 [ c r > c < c r c > c4 < ]4" },
+
+  // -- the modulation demos --
+
+  { "VIBRATO",                                  // mp on the lead, k on the pad
+    "t110 o5 l2 v11 q8 me1 mp6,45,200 [ e g | a g ]2",
+    "t110 o3 l1 v10 q8 me0 [ c | f ]2",
+    "t110 o4 l1 v6  q8 me0 k7 [ g | c ]2",
+    0 },
+
+  { "PLUCK",                                    // me: hard pluck over a long bass
+    "t150 o5 l16 v12 q8 me13 [ c e g > c < g e ]8",
+    "t150 o3 l4  v11 q6 me2  [ c c g g ]3",
+    "t150 o4 l2  v6  q8 me0  [ e g ]3",
+    "@n t150 o5 l8 v9 [ c r c c ]6" },
+
+  { "SLIDE",                                    // mg portamento, ms falling blips
+    "t120 o4 l4 v11 q8 me0 mg120 [ c g > c < g ]4",
+    "t120 o2 l2 v10 q7 me3 [ c f ]4",
+    "t120 o5 l8 v7  q3 me8 ms-900 [ c r c r c r c r ]4",
+    "@n t120 o4 l4 v8 [ c r c r ]4" },
+
+  { "THICK",                                    // the same line twice, k cents apart
+    "t100 o5 l2 v10 q8 me0 k-6 mv5,35 [ a > c < | b a ]2",
+    "t100 o5 l2 v10 q8 me0 k6       [ a > c < | b a ]2",
+    "t100 o2 l1 v11 q8 me1 [ a | e ]2",
+    0 },
 };
 static const int BGM_COUNT = (int)( sizeof(BGM_DEFS) / sizeof(BGM_DEFS[0]) );
 
