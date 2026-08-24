@@ -12,9 +12,17 @@
  *     spends nothing on it.
  *   - Three sections, A B C, four bars each -- two in the feature demos at the
  *     end -- played through once and then looped.  A is the tune, B answers it
- *     over a different progression, and C turns somewhere else again, usually
- *     with the lead on another waveform: a section head is the natural place to
- *     change what a voice *is* rather than only what it plays.
+ *     over a different progression, and C turns somewhere else again.  The lead
+ *     changes waveform at every section head: a section head is the natural
+ *     place to change what a voice *is* rather than only what it plays, and one
+ *     tune heard through three timbres is what stops a piece sounding like one
+ *     long instrument solo.
+ *   - In section C the top chord voice leaves the chord and doubles the lead an
+ *     octave down, on its own waveform and the few cents its 'k' already gave
+ *     it.  Two voices a beat apart playing the same line read as one much
+ *     bigger instrument, which is what the chip has instead of a louder one --
+ *     and it is what puts all five melodic voices on the hook.  The chord
+ *     drops to two notes there; the bass and the remaining pair carry it.
  *   - Every track of a piece is exactly the same number of whole notes long.
  *     Each loops back to its own start independently (see sound.cpp's
  *     track_advance), so a track a sixteenth short would walk out of phase
@@ -30,11 +38,18 @@
  * The WAV_* macros below are 32-hex-digit waveforms for '@w' (one digit per
  * sample, 0 the bottom of the wave, f the top, 8 the middle).  Slots 0..7 hold
  * the factory tones that sndSfx builds its presets out of and are left alone;
- * each piece loads the three or four timbres it wants into slots 8..15 in its
- * lead track's header, before any track has played a note.  The bank is a
- * handful of classic shapes -- a triangle, a sine, two pulse widths -- plus
- * additive tones built out of a few harmonics apiece, which is what the
- * wavetable is for and what a plain square cannot do.
+ * each piece loads the four or five timbres it wants into slots 8..15 in its
+ * lead track's header, before any track has played a note -- normally slot 8
+ * for the lead in A, 9 for the pad, 10 for the bass, and 11 and 12 for the two
+ * timbres the lead moves to in B and C.
+ *
+ * The bank is a handful of classic shapes -- a triangle, a sine, four pulse
+ * widths -- plus tones built out of chosen harmonics: hard-sync edges, folded
+ * sines, vowel formants, plucks whose harmonics are phase-shifted against each
+ * other so the energy of the cycle lands in one place, and bells whose partials
+ * are not a harmonic series at all.  That is what the wavetable is for and what
+ * a plain square cannot do, and it is the whole reason a piece here can change
+ * instrument mid-phrase without changing a note.
  *
  * Everything is laid out on a strict bar grid -- every bar of every track is
  * exactly one whole note -- so a piece can be read down a column as well as
@@ -42,24 +57,67 @@
  * same total length.
  */
 
-// The waveform bank: 32 samples of 4 bits, one hex digit each.
-#define WAV_BASSR    "8acefffedccbba998776554432111246"   // fundamental plus a little 2nd: round bass
-#define WAV_BELL     "8cbbaabaadfda8798798631366566554"   // inharmonic partials: bell, chime
-#define WAV_FIFTH    "8dffdb97555676668aaa9abbb9753113"   // a fifth stacked on top: bright, open
-#define WAV_GLASS    "8deeedcdfdcdeeed8322234313432223"   // odd harmonics only: glassy, clarinet-ish
-#define WAV_HOLLOW   "fffffffaaaffffff1111111666111111"   // a notched square: woody, muted
-#define WAV_METAL    "accd55bbeefa8eb86443bb5522168258"   // high inharmonic partials: clangorous
-#define WAV_ORGAN    "8ceeffedeedb98768a98753223211224"   // octaves stacked on the fundamental
-#define WAV_PIANO    "8dffeeedca889aa98766788643222113"   // a bright even-harmonic tone
+// The waveform bank: 32 samples of 4 bits, one hex digit each.  Grouped by
+// family rather than alphabetically, because picking a lead timbre is a matter
+// of picking a family first -- a pulse, a saw, a vowel, a bell -- and only then
+// which member of it.
+//
+// -- pulses: one level, one duty cycle.  The narrower, the thinner and more
+//    nasal, and the more even harmonics come with it.
+#define WAV_PULSE06  "ff111111111111111111111111111111"   // 6.25% pulse: a needle, piccolo-thin
 #define WAV_PULSE12  "ffff1111111111111111111111111111"   // 12.5% pulse: thinner, more nasal
 #define WAV_PULSE25  "ffffffff111111111111111111111111"   // 25% pulse: the classic chip lead
-#define WAV_REED     "8dfdcbbbabbbacdc8434655565554313"   // strong odd harmonics: oboe, reed
-#define WAV_SINE     "89bcdeefffeedcb98754322111223457"   // sine: the plainest tone there is
+#define WAV_PULSE37  "ffffffffffff44444444444444444444"   // 37.5% pulse: fat, nearly a square
+#define WAV_HOLLOW   "fffffffaaaffffff1111111666111111"   // a notched square: woody, muted
+#define WAV_SUBSQ    "ffffffff11111111bbbbbbbb55555555"   // a square whose second half is quieter: octave-down growl
+// -- saws and staircases: every harmonic present, falling as 1/h.  Bright,
+//    brassy, the shape a lead cuts through a mix with.
+#define WAV_SAW      "ffeeddccbbaaa9988776665544332211"   // a raw falling saw: buzzy, the brightest plain shape
 #define WAV_SOFTSAW  "ffffffffeedccba98765443221111111"   // sawtooth with the corner rounded off
-#define WAV_STRING   "8dfedccbaaaa99998777766665443213"   // a full harmonic series: bowed strings
+#define WAV_STAIR    "11113333555577779999bbbbddddffff"   // a saw in eight steps: the same tone, quantised and grittier
+#define WAV_DBLSAW   "fedcba9887654321fedcba9887654321"   // two saw cycles in one period: sounds an octave up, thick
+#define WAV_BUZZ     "8fcab9aa999998988878777776675641"   // harmonics falling only as 1/sqrt(h): a dense buzz
+// -- hard sync: a saw running at a fractional multiple, cut off at the period.
+//    The discontinuity is the sound -- a formant that does not move with pitch.
+#define WAV_SYNC15   "ddcbbaa988776654433221dccbaa9988"   // 1.5x: a mild sync edge, vocal-ish
 #define WAV_SYNC     "fedcba8765432fedca98765432fdcba9"   // a saw running 2.5x: hard-sync buzz
+#define WAV_SYNC35   "fdca976431dca976431dca976431ecb9"   // 3.5x: a screaming sync lead
+#define WAV_FOLD     "8cfc975444579cfc841479bcccb97414"   // a sine driven past full scale and folded back: hollow, gritty
+// -- additive tones: a handful of harmonics apiece, which is what a wavetable
+//    is for and what a plain square cannot do.
+#define WAV_SINE     "89bcdeefffeedcb98754322111223457"   // sine: the plainest tone there is
 #define WAV_TRI      "1234456789abccdefedccba987654432"   // triangle: soft, hollow, few harmonics
+#define WAV_STRING   "8dfedccbaaaa99998777766665443213"   // a full harmonic series: bowed strings
+#define WAV_BRASS    "8dfeccbbaaa999888887776665544213"   // harmonics 1..7 falling smoothly: brass, horns
+#define WAV_ORGAN    "8ceeffedeedb98768a98753223211224"   // octaves stacked on the fundamental
+#define WAV_OCTAVE   "8beffeddcba876568aba986543321125"   // fundamental and octave at equal strength: one voice, doubled
+#define WAV_FIFTH    "8dffdb97555676668aaa9abbb9753113"   // a fifth stacked on top: bright, open
+#define WAV_GLASS    "8deeedcdfdcdeeed8322234313432223"   // odd harmonics only: glassy, clarinet-ish
+#define WAV_REED     "8dfdcbbbabbbacdc8434655565554313"   // strong odd harmonics: oboe, reed
+#define WAV_NASAL    "8dfeb8778899a9988877677889985213"   // the 3rd harmonic louder than the 1st: pinched, kazoo-like
+#define WAV_AIRY     "9b9bcdfbbcceb8a99845556324354256"   // a fundamental with a breath of 6th and 12th: flute
+#define WAV_BASSR    "8acefffedccbba998776554432111246"   // fundamental plus a little 2nd: round bass
+#define WAV_PIANO    "8dffeeedca889aa98766788643222113"   // a bright even-harmonic tone
+// -- vowels: a formant peak parked on a fixed harmonic, the way a throat does
+//    it.  Three different peaks read as three different vowels.
 #define WAV_VOX      "8dfeba9aaa99accb8544677666765213"   // a formant peak: vocal, vowel-like
+#define WAV_VOXAH    "8dfdbbbba98899998777788765555313"   // a low, wide peak: an open "ah"
+#define WAV_VOXEE    "8fa7cfb9abba99a98767765567514961"   // a peak up at the 8th: a pinched "ee"
+#define WAV_VOXOO    "8bdffedcbbbaa9988877665554321135"   // almost no peak at all: a dark, rounded "oo"
+// -- plucked: harmonics phase-shifted against each other, which puts the
+//    energy of the cycle in one place and gives the note a leading edge.
+#define WAV_HARP     "889aaaabccccdffd8311344445666678"   // alternating phases: a soft, round pluck
+#define WAV_KOTO     "888999adfd9887788899887313677788"   // a strong 3rd against a weak 2nd: a wire pluck
+#define WAV_CLAV     "fff88888888888881118888888888888"   // two impulses half a period apart: clav, harpsichord
+#define WAV_MARIMBA  "8bbccaacdefeba878986521234664455"   // fundamental plus a bare 4th harmonic: wooden mallet
+// -- bells and metal: partials that are not a harmonic series, so the ear
+//    hears a struck object rather than a played note.
+#define WAV_BELL     "8cbbaabaadfda8798798631366566554"   // inharmonic partials: bell, chime
+#define WAV_CHIME    "8dcdcc8bfefee7788899221215844343"   // 1, 4 and 9: a clean tubular chime
+#define WAV_METAL    "accd55bbeefa8eb86443bb5522168258"   // high inharmonic partials: clangorous
+#define WAV_CLANG    "dc99988bcfe8bbaa3477788541285566"   // odd partials, half of them phase-flipped: a struck bar
+#define WAV_RING     "89a9426cfc6249a989a9426cfc6249a9"   // a sine ring-modulated by its 5th harmonic: two tones, no fundamental
+#define WAV_GRIT     "89aabf988bbedeb78952325588715667"   // scattered harmonics up to the 15th: dirty, electric
 
 struct BgmDef {
   const char* name;
@@ -69,12 +127,14 @@ struct BgmDef {
 static const BgmDef BGM_DEFS[] = {
   // SUNRISE -- F major. A I-iii-IV-V, B vi-IV-I-V, C the IV-V-iii-vi royal road
   { "SUNRISE", {
-    "@w8={" WAV_TRI "}@w9={" WAV_ORGAN "}@w10={" WAV_BASSR "} "
-      "@8 t112 v11 q8 me1 mp5,30,250 "
+    "@w8={" WAV_HARP "}@w9={" WAV_ORGAN "}@w10={" WAV_BASSR "}@w11={" WAV_VOXOO "}"
+      "@w12={" WAV_OCTAVE "} "
+      "@8 t112 v11 q7 me6 mp0 mg0 "
       /*A*/ "o5 f4. a8 o6 c2 | o5 a4. o6 c8 e2 | o6 d4 c4 o5 a+2 | o6 c4 o5 a4 g2 "
-      /*B*/ "o6 d8 e8 f4 d2 | o6 f8 d8 c4 o5 a+2 | o6 c8 o5 a8 f4 a2 | o6 c4. o5 a+8 g2 "
-      /*C*/ "@9 v10 mp7,45,120 o6 a+4 a4 g4 f4 | o6 e8 g8 a4 g2 | o6 a4 g4 e4 c4 | "
-            "o6 d4 f4 a2 ",
+      /*B*/ "@11 v11 q8 me0,120 mp4,25,300 "
+            "o6 d8 e8 f4 d2 | o6 f8 d8 c4 o5 a+2 | o6 c8 o5 a8 f4 a2 | o6 c4. o5 a+8 g2 "
+      /*C*/ "@12 v10 q7 me2 mp6,40,150 mg60 o6 a+4 a4 g4 f4 | o6 e8 g8 a4 g2 | "
+            "o6 a4 g4 e4 c4 | o6 d4 f4 a2 ",
     "@10 t112 v11 q6 me3 "
       /*A*/ "o2 [f4]4 | [a4]4 | [a+4]4 | [c4]4 "
       /*B*/ "o2 [d8]8 | [a+8]8 | [f8]8 | [c8]8 "
@@ -87,10 +147,13 @@ static const BgmDef BGM_DEFS[] = {
       /*A*/ "o5 c1 | e1 | f1 | g1 "
       /*B*/ "o4 a2 a2 | f2 f2 | c2 c2 | g2 g2 "
       /*C*/ "o5 f4. f4. f4 | g4. g4. g4 | e4. e4. e4 | a4. a4. a4 ",
-    "@9 t112 v6 q8 me0,400 mv3,22 k8 "
+    "@9 t112 v6 q8 me0,400 mv3,22 mp0 k8 "
       /*A*/ "o5 f1 | a1 | a+1 | o6 c1 "
       /*B*/ "o5 d2 d2 | o4 a+2 a+2 | f2 f2 | c2 c2 "
-      /*C*/ "o4 a+4. a+4. a+4 | o5 c4. c4. c4 | o4 a4. a4. a4 | o5 d4. d4. d4 ",
+      // C: this voice leaves the chord and doubles the lead an octave down, on
+      // a different waveform and eight cents sharp -- one fat unison lead.
+      /*C*/ "@8 v9 q7 me4 mv0 mp5,35,150 o5 a+4 a4 g4 f4 | o5 e8 g8 a4 g2 | "
+            "o5 a4 g4 e4 c4 | o5 d4 f4 a2 ",
     "@n t112 q3 "
       /*A*/ "[ [ v13 o1 a16 r16 v9 o6 d+16 r16 v12 o4 d+16 r16 v9 o6 d+16 r16 ]2 ]3 | "
             "v13 o1 a16 r16 v9 o6 d+16 v13 o1 a16 v12 o4 d+16 r16 v9 o6 d+16 r16 v13 o1 a16 v8 o4 d+16 v12 d+16 v8 d+16 v13 o1 a16 v8 o4 d+16 v12 d+16 v8 d+16 "
@@ -101,14 +164,16 @@ static const BgmDef BGM_DEFS[] = {
   } },
   // MEADOW -- D major. A I-IV-vi-V, B ii-V-I-vi, C the mixolydian I-bVII-IV-I
   { "MEADOW", {
-    "@w8={" WAV_SINE "}@w9={" WAV_STRING "}@w10={" WAV_TRI "} "
-      "@8 t126 v11 q7 me3 mp4,25,300 "
+    "@w8={" WAV_AIRY "}@w9={" WAV_STRING "}@w10={" WAV_TRI "}@w11={" WAV_KOTO "}"
+      "@w12={" WAV_BRASS "} "
+      "@8 t126 v11 q8 me0,90 mp4,30,260 mg0 "
       /*A*/ "o5 d8 f+8 a4 o6 d2 | o6 d8 o5 b8 g4 b2 | o5 b8 o6 d8 f+4 d2 | "
             "o6 e4 c+4 o5 a2 "
-      /*B*/ "o5 e8 g8 b4 o6 e2 | o6 e8 c+8 o5 a4 e2 | o5 f+8 a8 o6 d4 f+2 | "
+      /*B*/ "@11 v12 q5 me9 mp0 "
+            "o5 e8 g8 b4 o6 e2 | o6 e8 c+8 o5 a4 e2 | o5 f+8 a8 o6 d4 f+2 | "
             "o6 d4 o5 b4 f+2 "
-      /*C*/ "@10 v11 q6 me6 mp0 o6 d4 e4 f+4 e4 | o6 g4 e4 c2 | o6 d4 o5 b4 g4 b4 | "
-            "o6 a2 f+4 d4 ",
+      /*C*/ "@12 v11 q7 me2 mp6,35,120 mg50 o6 d4 e4 f+4 e4 | o6 g4 e4 c2 | "
+            "o6 d4 o5 b4 g4 b4 | o6 a2 f+4 d4 ",
     "@10 t126 v11 q6 me4 "
       /*A*/ "o2 d8 o3 d8 o2 d8 o3 d8 o2 d8 o3 d8 o2 d8 o3 d8 | "
             "o2 g8 o3 g8 o2 g8 o3 g8 o2 g8 o3 g8 o2 g8 o3 g8 | "
@@ -124,10 +189,12 @@ static const BgmDef BGM_DEFS[] = {
       /*A*/ "o4 a1 | o5 d1 | f+1 | e1 "
       /*B*/ "o4 b2 b2 | o5 e2 e2 | a2 a2 | f+2 f+2 "
       /*C*/ "o4 [a4]4 | [g4]4 | [d4]4 | [a4]4 ",
-    "@9 t126 v6 q8 me0 mv4,25 k7 "
+    "@9 t126 v6 q8 me0 mv4,25 mp0 k7 "
       /*A*/ "o5 d1 | g1 | b1 | a1 "
       /*B*/ "o5 e2 e2 | a2 a2 | d2 d2 | o4 b2 b2 "
-      /*C*/ "o5 [d4]4 | [c4]4 | o4 [g4]4 | [d4]4 ",
+      // C: the pluck from B comes back, an octave under the brass lead.
+      /*C*/ "@11 v9 q6 me6 mv0 o5 d4 e4 f+4 e4 | o5 g4 e4 c2 | "
+            "o5 d4 o4 b4 g4 b4 | o5 a2 f+4 d4 ",
     "@n t126 q3 "
       /*A*/ "[ [ v13 o1 a16 r16 v9 o6 d+16 r16 v12 o4 d+16 r16 v9 o6 d+16 r16 ]2 ]3 | "
             "v13 o1 a16 r16 v9 o6 d+16 v13 o1 a16 v12 o4 d+16 r16 v9 o6 d+16 r16 v13 o1 a16 v8 o4 d+16 v12 d+16 v8 d+16 v13 o1 a16 v8 o4 d+16 v12 d+16 v8 d+16 "
@@ -138,12 +205,14 @@ static const BgmDef BGM_DEFS[] = {
   } },
   // SKYLINE -- C# minor. A a dorian i7-IV7 vamp, B iim7b5-V7-i, C bVI-bVII-i
   { "SKYLINE", {
-    "@w8={" WAV_VOX "}@w9={" WAV_GLASS "}@w10={" WAV_BASSR "}@w11={" WAV_BELL "} "
-      "@8 t138 v11 q6 me2 mp6,32,150 "
+    "@w8={" WAV_VOXEE "}@w9={" WAV_GLASS "}@w10={" WAV_BASSR "}@w11={" WAV_SYNC15 "}"
+      "@w12={" WAV_CHIME "} "
+      "@8 t138 v11 q6 me2 mp6,32,150 mg0 "
       /*A*/ "o6 c+8 d+8 e4 g+2 | o6 a+4 g+4 f+2 | o6 e8 c+8 o5 b4 g+2 | "
             "o5 a+8 o6 c+8 e4 f+2 "
-      /*B*/ "o6 f+4 d+4 a4 f+4 | o6 g+2 f+4 d+4 | o6 c+1 | o6 e4 d+4 c+2 "
-      /*C*/ "@11 v11 q8 me0 mp3,20,400 o6 a4 g+4 e4 c+4 | o6 b4 a4 f+4 d+4 | "
+      /*B*/ "@11 v11 q8 me1 mp3,18,200 mg70 "
+            "o6 f+4 d+4 a4 f+4 | o6 g+2 f+4 d+4 | o6 c+1 | o6 e4 d+4 c+2 "
+      /*C*/ "@12 v11 q8 me4 mp2,15,500 mg0 o6 a4 g+4 e4 c+4 | o6 b4 a4 f+4 d+4 | "
             "o6 g+2 e4 c+4 | o7 c+2 o6 g+4 e4 ",
     "@10 t138 v11 q6 me4 "
       /*A*/ "o2 c+8 r8 c+8 c+8 r8 c+8 g+8 r8 | f+8 r8 f+8 f+8 r8 f+8 o3 c+8 r8 | "
@@ -165,12 +234,14 @@ static const BgmDef BGM_DEFS[] = {
       /*B*/ "o4 a8 r8 a8 r8 a8 r8 a8 r8 | d+8 r8 d+8 r8 d+8 r8 d+8 r8 | "
             "g+8 r8 g+8 r8 g+8 r8 g+8 r8 | g+8 r8 g+8 r8 g+8 r8 g+8 r8 "
       /*C*/ "o5 e1 | f+1 | g+1 | g+1 ",
-    "@9 t138 v6 q8 me0 mv5,30 k9 "
+    "@9 t138 v6 q8 me0 mv5,30 mp0 k9 "
       /*A*/ "r8 o4 b8 r8 b8 r8 b8 r8 b8 | r8 o5 e8 r8 e8 r8 e8 r8 e8 | "
             "r8 o4 b8 r8 b8 r8 b8 r8 b8 | r8 o5 e8 r8 e8 r8 e8 r8 e8 "
       /*B*/ "o5 c+8 r8 c+8 r8 c+8 r8 c+8 r8 | f+8 r8 f+8 r8 f+8 r8 f+8 r8 | "
             "c+8 r8 c+8 r8 c+8 r8 c+8 r8 | c+8 r8 c+8 r8 c+8 r8 c+8 r8 "
-      /*C*/ "o4 a1 | b1 | o5 c+1 | c+1 ",
+      // C: the sync lead from B, an octave under the chime, nine cents sharp.
+      /*C*/ "@11 v9 q7 me5 mv0 o5 a4 g+4 e4 c+4 | o5 b4 a4 f+4 d+4 | "
+            "o5 g+2 e4 c+4 | o6 c+2 o5 g+4 e4 ",
     "@n t138 q3 "
       /*A*/ "[ [ v13 o1 a16 v8 o4 d+16 v9 o6 d+16 v13 o1 a16 v12 o4 d+16 r16 v9 o6 d+16 v13 o1 a16 ]2 ]3 | "
             "a16 r16 v9 o6 d+16 v13 o1 a16 v12 o4 d+16 r16 v9 o6 d+16 r16 v13 o1 a16 v8 o4 d+16 v12 d+16 v8 d+16 v13 o1 a16 v8 o4 d+16 v12 d+16 v8 d+16 "
@@ -181,12 +252,14 @@ static const BgmDef BGM_DEFS[] = {
   } },
   // VICTORY -- C major. A I-IV-V-I, B the vi-ii-V-I circle, C the heroic I-bVI-bVII-I
   { "VICTORY", {
-    "@w8={" WAV_PULSE25 "}@w9={" WAV_FIFTH "}@w10={" WAV_SOFTSAW "}@w11={" WAV_SYNC "} "
-      "@8 t150 v11 q7 me2 mp7,25,200 "
+    "@w8={" WAV_BRASS "}@w9={" WAV_FIFTH "}@w10={" WAV_SOFTSAW "}@w11={" WAV_SYNC35 "}"
+      "@w12={" WAV_OCTAVE "} "
+      "@8 t150 v11 q7 me2 mp7,25,200 mg0 "
       /*A*/ "o6 e4 e4 c8 o5 g8 e4 | o6 f4 a4 o7 c2 | o6 b4 g4 d2 | o6 c8 e8 g8 o7 c8 e2 "
-      /*B*/ "o6 a4 e4 c2 | o6 d8 f8 a4 f2 | o6 g4 d4 o5 b2 | o6 c2 e2 "
-      /*C*/ "@11 v11 q6 me4 mp8,35,80 o6 g4 o7 c4 e2 | o6 g+4 o7 c4 d+2 | o6 a+4 o7 d4 f2 | "
-            "o7 e2 c2 ",
+      /*B*/ "@12 v11 q8 me1 mp3,20,150 "
+            "o6 a4 e4 c2 | o6 d8 f8 a4 f2 | o6 g4 d4 o5 b2 | o6 c2 e2 "
+      /*C*/ "@11 v10 q6 me4 mp8,35,80 mg40 o6 g4 o7 c4 e2 | o6 g+4 o7 c4 d+2 | "
+            "o6 a+4 o7 d4 f2 | o7 e2 c2 ",
     "@10 t150 v11 q6 me4 "
       /*A*/ "o2 [c4]4 | [f4]4 | [g4]4 | [c4]4 "
       /*B*/ "o2 a4 o3 c4 e4 o2 d+4 | d4 f4 a4 f+4 | g4 b4 o3 d4 o2 c+4 | c4 e4 g4 g+4 "
@@ -199,10 +272,13 @@ static const BgmDef BGM_DEFS[] = {
       /*A*/ "o4 g1 | o5 c1 | d1 | g1 "
       /*B*/ "o5 [e4]4 | [a4]4 | [d4]4 | [g4]4 "
       /*C*/ "o4 g4. g4. g4 | d+4. d+4. d+4 | f4. f4. f4 | g4. g4. g4 ",
-    "@9 t150 v6 q8 me0 mv4,20 k7 "
+    "@9 t150 v6 q8 me0 mv4,20 mp0 k7 "
       /*A*/ "o5 c1 | f1 | g1 | o6 c1 "
       /*B*/ "o4 [a4]4 | o5 [d4]4 | [g4]4 | o6 [c4]4 "
-      /*C*/ "o5 c4. c4. c4 | o4 g+4. g+4. g+4 | a+4. a+4. a+4 | o5 c4. c4. c4 ",
+      // C: the horn from A doubles the sync lead an octave down -- the fanfare
+      // finishes on two voices in unison rather than one.
+      /*C*/ "@8 v9 q6 me3 mv0 mp5,25,120 o5 g4 o6 c4 e2 | o5 g+4 o6 c4 d+2 | "
+            "o5 a+4 o6 d4 f2 | o6 e2 c2 ",
     "@n t150 q3 "
       /*A*/ "[ [ v13 o1 a16 r16 v9 o6 d+16 r16 v12 o4 d+16 r16 v9 o6 d+16 r16 ]2 ]3 | "
             "v13 o1 a16 r16 v9 o6 d+16 v13 o1 a16 v12 o4 d+16 r16 v9 o6 d+16 r16 v13 o1 a16 v8 o4 d+16 v12 d+16 v8 d+16 v13 o1 a16 v8 o4 d+16 v12 d+16 v8 d+16 "
@@ -213,11 +289,13 @@ static const BgmDef BGM_DEFS[] = {
   } },
   // PARADE -- G major. A I-ii-V-I, B IV-iv-I-V with a borrowed minor iv, C I-VI7-ii-V
   { "PARADE", {
-    "@w8={" WAV_REED "}@w9={" WAV_ORGAN "}@w10={" WAV_BASSR "}@w11={" WAV_PIANO "} "
-      "@8 t132 v11 q6 me3 mp5,20,300 "
+    "@w8={" WAV_PULSE06 "}@w9={" WAV_ORGAN "}@w10={" WAV_BASSR "}@w11={" WAV_BRASS "}"
+      "@w12={" WAV_DBLSAW "} "
+      "@8 t132 v11 q5 me8 mp0 mg0 "
       /*A*/ "o6 g4 d4 o5 b4 g4 | o6 a4 e4 c4 e4 | o6 f+4 a4 d4 f+4 | o6 g2 d2 "
-      /*B*/ "o6 e4 g4 o7 c2 | o6 d+4 g4 o7 c2 | o6 d4 o5 b4 g2 | o6 a4 f+4 d2 "
-      /*C*/ "@11 v11 q8 me1 mp6,40,120 o6 b8 a8 g4 d2 | o6 g+8 b8 o7 e4 o6 b2 | "
+      /*B*/ "@11 v11 q7 me2 mp5,22,250 "
+            "o6 e4 g4 o7 c2 | o6 d+4 g4 o7 c2 | o6 d4 o5 b4 g2 | o6 a4 f+4 d2 "
+      /*C*/ "@12 v10 q6 me3 mp6,40,120 mg30 o6 b8 a8 g4 d2 | o6 g+8 b8 o7 e4 o6 b2 | "
             "o6 a8 o7 c8 e4 c2 | o6 f+8 a8 o7 d4 o6 a2 ",
     "@10 t132 v11 q6 me4 "
       /*A*/ "o2 g2 g2 | a2 a2 | d2 d2 | g2 g2 "
@@ -234,10 +312,12 @@ static const BgmDef BGM_DEFS[] = {
       /*A*/ "o5 d1 | e1 | a1 | d1 "
       /*B*/ "o4 g2 g2 | g2 g2 | d2 d2 | a2 a2 "
       /*C*/ "o5 [d4]4 | o4 [b4]4 | o5 [e4]4 | [a4]4 ",
-    "@9 t132 v6 q8 me0 mv3,25 k7 "
+    "@9 t132 v6 q8 me0 mv3,25 mp0 k7 "
       /*A*/ "o4 g1 | a1 | o5 d1 | g1 "
       /*B*/ "o5 c2 c2 | c2 c2 | o4 g2 g2 | d2 d2 "
-      /*C*/ "o4 [g4]4 | [d4]4 | [a4]4 | o5 [d4]4 ",
+      // C: the horn from B, an octave under the lead, for the last chorus.
+      /*C*/ "@11 v9 q6 me3 mv0 o5 b8 a8 g4 d2 | o5 g+8 b8 o6 e4 o5 b2 | "
+            "o5 a8 o6 c8 e4 c2 | o5 f+8 a8 o6 d4 o5 a2 ",
     "@n t132 q3 "
       /*A*/ "[ v13 o1 a16 r16 v12 o4 d+16 r16 v13 o1 a16 r16 v12 o4 d+16 r16 v13 o1 a16 r16 v12 o4 d+16 r16 v13 o1 a16 v8 o4 d+16 v12 d+16 v8 d+16 ]3 | "
             "v13 o1 a16 r16 v9 o6 d+16 v13 o1 a16 v12 o4 d+16 r16 v9 o6 d+16 r16 v13 o1 a16 v8 o4 d+16 v12 d+16 v8 d+16 v13 o1 a16 v8 o4 d+16 v12 d+16 v8 d+16 "
