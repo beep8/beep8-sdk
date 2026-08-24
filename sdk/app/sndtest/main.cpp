@@ -6,7 +6,10 @@
 // every piece runs a lead, a bass, a three-voice chord detuned a few cents apart
 // (see 'k') and a drum track on the noise generator, through an A/B/C form on
 // three different chord progressions, with the timbres loaded into the
-// wavetable's own slots 8..15 rather than taken from the factory eight.
+// wavetable's own slots 8..15 rather than taken from the factory eight. Lead and
+// bass both change waveform at a section head, and in C the top chord voice
+// leaves the chord to double the lead an octave down -- so what an audition
+// hears is one tune through several instruments, not one instrument all through.
 //
 // TEXT LAYER CHOICE: all the text here is drawn on the BACKGROUND text layer
 // (cursor()/print(), TILE units, 16x30 tiles on a 128x240 screen) rather than
