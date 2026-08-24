@@ -58,7 +58,7 @@ static const char* SFX_NAME[ SFX_COUNT ] = {
 static const int ROW_TITLE = 0;       // ... with the pixel art strip beside it
 static const int BGM_ROW   = 3;
 static const int SE_ROW    = 6;
-static const int ROW_HELP  = 9;
+static const int ROW_HELP  = 12;
 
 static const int NAME_W    = 14;      // columns 1..14, between the two arrows
 
@@ -82,10 +82,11 @@ static const int NOTES       = 3;
 
 // Only four background palettes exist, so they carry four meanings: yellow is
 // the chrome of the selector you are on, peach the name it is showing,
-// lavender everything you are not on.
+// lavender everything you are not on, and light blue for the help text.
 static const int PAL_HEAD  = 1;       // WHITE -> YELLOW
 static const int PAL_SEL   = 2;       // WHITE -> LIGHT_PEACH
 static const int PAL_DIM   = 3;       // WHITE -> LAVENDER
+static const int PAL_HELP  = 0;       // WHITE -> SKY_BLUE
 
 // The cast, one bit per pixel, MSB leftmost. A blob that hums along to the
 // music and the two notes it hums; 8x8 each, which is all the height there is
@@ -280,9 +281,9 @@ public:
     cursor( 1, ROW_TITLE, (BgPal)PAL_HEAD ); print( "SNDTEST" );
     drawSel( 0 );
     drawSel( 1 );
-    cursor( 1, ROW_HELP,     (BgPal)PAL_DIM ); print( "UP/DN  BGM/SE" );
-    cursor( 1, ROW_HELP + 1, (BgPal)PAL_DIM ); print( "L/R    SELECT" );
-    cursor( 1, ROW_HELP + 2, (BgPal)PAL_DIM ); print( "Z SE   X BGM" );
+    cursor( 1, ROW_HELP,     (BgPal)PAL_HELP ); print( "UP/DN  BGM/SE" );
+    cursor( 1, ROW_HELP + 2, (BgPal)PAL_HELP ); print( "L/R    SELECT" );
+    cursor( 1, ROW_HELP + 4, (BgPal)PAL_HELP ); print( "Z SE   X BGM" );
   }
 
   void _draw() override {
@@ -293,6 +294,7 @@ public:
       pal( Color::WHITE, Color::YELLOW,      PAL_HEAD );
       pal( Color::WHITE, Color::LIGHT_PEACH, PAL_SEL  );
       pal( Color::WHITE, Color::LAVENDER,    PAL_DIM  );
+      pal( Color::WHITE, Color::BLUE,        PAL_HELP );
       first_draw = false;
     }
 
