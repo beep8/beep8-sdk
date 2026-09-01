@@ -977,13 +977,15 @@ class PixArt : public Pico8 {
     // tile coordinate of the top-left of the current display position (vx,vy):
     // the 128x128 canvas as an 8x8-tile grid, so each axis reads (0,0)-(15,15).
     // vx/vy drive both PIXEL's panned viewport and OVERVIEW's selection box, so
-    // this is shown in both modes. Sits in the blank gap on row D between
-    // Undo/Redo (ends x=37) and the transfer block (starts x=89): 52px wide,
-    // plenty for the 6-char "Tnn,nn" readout (48px).
+    // this is shown in both modes. Pinned to the screen's bottom-right corner
+    // (drawn last, so it sits on top of the DL/Import icons there); width
+    // varies with digit count, so it's measured and right/bottom-aligned
+    // rather than fixed-positioned.
     {
-      char buf[8];
-      snprintf(buf, sizeof(buf), "T%2d,%2d", vx / 8, vy / 8);
-      sprint(39, BARD_Y + (ICON - 8) / 2, DARK_GREY, buf);
+      char buf[12];
+      snprintf(buf, sizeof(buf), "T(%d,%d)", vx / 8, vy / 8);
+      const int tw = (int)strlen(buf) * 8;
+      sprint(SCRW - tw, SCRH - 8, LIGHT_GREY, buf);
     }
 
     // net status banner, drawn on top of the edit area: "SAVING..."/"LOADING..."
