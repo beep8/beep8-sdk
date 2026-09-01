@@ -974,6 +974,18 @@ class PixArt : public Pico8 {
     rect(SCRW - ICON - PITCH - 2, BARC_Y - 2, SCRW,
          hosted ? (BARC_Y + ICON + 2) : SCRH, LIGHT_GREY);
 
+    // tile coordinate of the top-left of the current display position (vx,vy):
+    // the 128x128 canvas as an 8x8-tile grid, so each axis reads (0,0)-(15,15).
+    // vx/vy drive both PIXEL's panned viewport and OVERVIEW's selection box, so
+    // this is shown in both modes. Sits in the blank gap on row D between
+    // Undo/Redo (ends x=37) and the transfer block (starts x=89): 52px wide,
+    // plenty for the 6-char "Tnn,nn" readout (48px).
+    {
+      char buf[8];
+      snprintf(buf, sizeof(buf), "T%2d,%2d", vx / 8, vy / 8);
+      sprint(39, BARD_Y + (ICON - 8) / 2, DARK_GREY, buf);
+    }
+
     // net status banner, drawn on top of the edit area: "SAVING..."/"LOADING..."
     // while the blocking op is pending, then the result for msgTtl frames.
     // A hosted background sync (silent download / status poll / startup pull)
