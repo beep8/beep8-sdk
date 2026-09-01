@@ -333,8 +333,6 @@ class PixArt : public Pico8 {
   bool help = false;               // HELP overlay: shortcuts only, editing disabled
   bool prevDrag = false;
   int  grabCX = 0, grabCY = 0;     // Hand-tool grab anchor (canvas coords)
-  int  curCx = 0, curCy = 0;       // last touched pixel (canvas coords), PIXEL mode only --
-                                    // drives the tile-local coordinate readout in _draw()
   int  fxId = -1, fxTtl = 0;       // button-press feedback (copy/paste): id + frames left
   int  netPhase = 0;               // 0 idle; 1/2: paint status a frame before the blocking net op
   int  netOp = 0;                  // 0 = save, 1 = load
@@ -787,7 +785,6 @@ class PixArt : public Pico8 {
         } else {
           const int cx = clampi(vx + mx / DOT, 0, CANVAS - 1);
           const int cy = clampi(vy + my / DOT, 0, CANVAS - 1);
-          curCx = cx; curCy = cy;              // drive the tile-coordinate readout
           switch (tool) {
             case B_PEN:
               if (press) beginStroke();
@@ -976,17 +973,6 @@ class PixArt : public Pico8 {
     // box closes up around the cloud row alone.
     rect(SCRW - ICON - PITCH - 2, BARC_Y - 2, SCRW,
          hosted ? (BARC_Y + ICON + 2) : SCRH, LIGHT_GREY);
-
-    // tile-local coordinate readout: where the last-touched pixel sits inside
-    // the current 16x16 tile, (0,0)-(15,15). PIXEL mode only -- OVERVIEW has
-    // no per-pixel cursor there, just the viewport box. Sits in the blank gap
-    // on row D between Undo/Redo (ends x=37) and the transfer block (starts
-    // x=89): 52px wide, plenty for the 6-char "Tnn,nn" readout (48px).
-    if (!overview) {
-      char buf[8];
-      snprintf(buf, sizeof(buf), "T%2d,%2d", curCx - vx, curCy - vy);
-      sprint(39, BARD_Y + (ICON - 8) / 2, DARK_GREY, buf);
-    }
 
     // net status banner, drawn on top of the edit area: "SAVING..."/"LOADING..."
     // while the blocking op is pending, then the result for msgTtl frames.
