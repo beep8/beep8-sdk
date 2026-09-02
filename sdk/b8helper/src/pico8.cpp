@@ -235,21 +235,25 @@ static  void  hif_update(){
   }
 
   _mouse_status.ClearStatus();
-  const b8HifMouseStatus* ms = _hif_decoder->GetMouseStatus();
-  if( ms->is_dragging ){
-    _mouse_status.btn_status |= LEFT;
-    bs.frm_pressed[ BUTTON_MOUSE_LEFT ]++;
-    bs.frm_released[ BUTTON_MOUSE_LEFT ] = 0;
-  } else {
-    bs.frm_pressed[ BUTTON_MOUSE_LEFT ] = 0;
-    bs.frm_released[ BUTTON_MOUSE_LEFT ]++;
-  }
 
+  // The pico8 layer exposes a single pointer, but the panel underneath is
+  // multi-touch, so "is a finger down?" must be answered from the whole set of
+  // contacts the decoder still considers active -- never from one TOUCH_END.
+  // Lifting *any* finger used to clear the held state here, and b8HifGetMouseStatus()
+  // has the mirror-image problem one layer down (b8lib/src/b8/hif.c tracks only
+  // _latest_identifier, so lifting the newest finger drops is_dragging while older
+  // ones are still touching). Counting the live contacts covers both cases.
+  bool touching = false;
   const auto& status = _hif_decoder->GetStatus();
   for (const auto& [key, value] : status) {
     switch(value->ev.type){
       case  B8_HIF_EV_TOUCH_START:
       case  B8_HIF_EV_TOUCH_MOVE:
+        touching = true;
+        _mouse_status.x = value->ev.xp;
+        _mouse_status.y = value->ev.yp;
+        break;
+
       case  B8_HIF_EV_MOUSE_MOVE:
       case  B8_HIF_EV_MOUSE_HOVER_MOVE:
       case  B8_HIF_EV_MOUSE_DOWN:
@@ -260,10 +264,23 @@ static  void  hif_update(){
 
       case  B8_HIF_EV_TOUCH_CANCEL:
       case  B8_HIF_EV_TOUCH_END:
-        _mouse_status.ClearStatus();
+        // This contact is gone; the ones still down are handled by their own entries.
         break;
 
     }
+  }
+
+  // The mouse button keeps coming from b8HifGetMouseStatus(): CHifDecoder does not
+  // rewrite an existing point's type on MOUSE_DOWN (a point born from a hover stays
+  // MOUSE_HOVER_MOVE until the next move), so GetStatus() cannot answer it.
+  const b8HifMouseStatus* ms = _hif_decoder->GetMouseStatus();
+  if( ms->is_dragging || touching ){
+    _mouse_status.btn_status |= LEFT;
+    bs.frm_pressed[ BUTTON_MOUSE_LEFT ]++;
+    bs.frm_released[ BUTTON_MOUSE_LEFT ] = 0;
+  } else {
+    bs.frm_pressed[ BUTTON_MOUSE_LEFT ] = 0;
+    bs.frm_released[ BUTTON_MOUSE_LEFT ]++;
   }
 }
 
