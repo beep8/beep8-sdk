@@ -1392,6 +1392,93 @@ namespace pico8 {
   u32 mousestatus();
 
   /**
+   * @brief Maximum number of simultaneous contacts tracked by touch().
+   *
+   * Contacts beyond this are ignored until an existing one is released.
+   */
+  #define PICO8_TOUCH_MAX (8)
+
+  /**
+   * @brief One contact point -- a finger on the touch panel, or the mouse while
+   *        its left button is held.
+   *
+   * `mousex()`/`mousey()`/`mousestatus()` only ever describe a single pointer (the
+   * *primary* contact, see below). Use `touchcount()` + `touch()` when a game wants
+   * to see several fingers at once.
+   *
+   * Coordinates are in the same units as `mousex()`/`mousey()`: screen pixels as
+   * `fx8`, sub-pixel precise. Assign to an `int` for whole pixels.
+   *
+   * @note A contact stays in the list for exactly one more frame after it is lifted,
+   *       with `released` set, so a release is never missed. That frame still counts
+   *       towards `touchcount()`; test `released` when you mean "fingers still down".
+   *       A finger that touches down and lifts inside a single frame still appears
+   *       once, with both `pressed` and `released` set. The mouse is the exception:
+   *       it is sampled once a frame, so a click shorter than a frame is missed
+   *       entirely -- as it always has been for `mousestatus()`.
+   */
+  struct Touch {
+    u8   id;        ///< Stays the same for as long as this contact lives (1..255; 0 = invalid).
+    fx8  x;         ///< Current X position.
+    fx8  y;         ///< Current Y position.
+    fx8  px;        ///< X position on the previous frame (equals `x` on the frame it began).
+    fx8  py;        ///< Y position on the previous frame (equals `y` on the frame it began).
+    u16  frames;    ///< Frames this contact has existed (1 on the frame it began).
+    bool pressed;   ///< This contact began on this frame.
+    bool released;  ///< This contact ended on this frame; `x`,`y` hold the final position.
+    bool ismouse;   ///< True if this came from the mouse rather than a finger.
+  };
+
+  /**
+   * @brief Number of contacts currently tracked (0..PICO8_TOUCH_MAX).
+   *
+   * Includes contacts released on this frame; see `Touch::released`.
+   */
+  int touchcount();
+
+  /**
+   * @brief Returns the idx'th contact, ordered oldest-first (the order they began).
+   *
+   * @param idx 0 <= idx < touchcount(). Out-of-range returns a contact with `id == 0`
+   *            and every other field zeroed, so callers need not bounds-check to draw.
+   *
+   * @note The index is not a handle: releasing an earlier contact shifts the later ones
+   *       down. To follow one specific finger across frames, remember its `id` and look
+   *       it up with `touchbyid()`.
+   *
+   * Example -- draw a circle on every finger:
+   * @code
+   * for (int i = 0; i < touchcount(); ++i) {
+   *   const Touch& t = touch(i);
+   *   if (t.released) continue;
+   *   circfill(t.x, t.y, 8, RED);
+   * }
+   * @endcode
+   */
+  const Touch& touch(int idx);
+
+  /**
+   * @brief Looks a contact up by its `Touch::id`.
+   *
+   * @param id The id remembered from an earlier frame.
+   * @return The contact, or `nullptr` once it has gone. The pointer is only good for
+   *         the current frame; look the id up again next frame rather than keeping it.
+   */
+  const Touch* touchbyid(u8 id);
+
+  /** @brief Shorthand for `touch(idx).x`. */
+  fx8 touchx(int idx);
+
+  /** @brief Shorthand for `touch(idx).y`. */
+  fx8 touchy(int idx);
+
+  /** @brief Shorthand for `touch(idx).pressed` -- this contact began on this frame. */
+  bool touchp(int idx);
+
+  /** @brief Shorthand for `touch(idx).released` -- this contact ended on this frame. */
+  bool touchr(int idx);
+
+  /**
    * @brief Calculates the cosine of an angle in radians.
    *
    * This function returns the cosine of an angle specified in radians. Unlike PICO-8's implementation,

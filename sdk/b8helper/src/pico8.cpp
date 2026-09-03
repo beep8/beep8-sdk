@@ -79,8 +79,8 @@ struct  ButtonStatus{
 };
 
 struct  MouseStatus{
-  s32 x = 0;
-  s32 y = 0;
+  fx8 x = 0;
+  fx8 y = 0;
   u16 btn_status = 0x0000;
   void  ClearStatus(){
     btn_status = 0x0000;
@@ -167,6 +167,159 @@ static  void  set_seed_from_time(){
   pico8::srand( seed );
 }
 
+// HIF reports positions as 16.4 fixed point; pico8 speaks fx8 (8 fraction bits).
+static  inline  fx8 touch_raw_to_fx8( s32 raw ){
+  return  fx8( raw ).asr( 4 );
+}
+
+// CHifDecoder hands back the live contacts keyed by the HIF identifier, which is
+// the browser's pointerId truncated to 8 bits (js.b8/Hif.js) and iterates in
+// identifier order rather than press order. Neither is something to hand a game,
+// so this layer keeps its own fixed slot table: a slot is claimed when a contact
+// begins and retired one frame after it ends (so `released` is always visible for
+// exactly one frame), and Touch::id is a handle minted here.
+struct  TouchSlot{
+  Touch pub;
+  u8    hif_id;  // the identifier this slot follows; meaningless when pub.ismouse
+  u32   seq;     // press order, for reporting oldest-first
+  bool  active;
+  bool  seen;    // this contact turned up in the current frame's scan
+};
+static  TouchSlot _touch_slot [ PICO8_TOUCH_MAX ];
+static  u8        _touch_order[ PICO8_TOUCH_MAX ];  // slot indices, oldest first
+static  int       _touch_num;
+static  u32       _touch_seq;
+static  u8        _touch_next_id;
+static  const Touch _touch_none = Touch();
+
+static  void  touch_clear_all(){
+  for( size_t nn=0 ; nn < numof( _touch_slot ) ; ++nn ) _touch_slot[ nn ] = TouchSlot();
+  _touch_num     = 0;
+  _touch_seq     = 0;
+  _touch_next_id = 1;
+}
+
+static  TouchSlot*  touch_find( u8 hif_id ){
+  for( size_t nn=0 ; nn < numof( _touch_slot ) ; ++nn ){
+    TouchSlot& ss = _touch_slot[ nn ];
+    if( ss.active && !ss.pub.ismouse && ss.hif_id == hif_id ) return &ss;
+  }
+  return  nullptr;
+}
+
+static  TouchSlot*  touch_find_mouse(){
+  for( size_t nn=0 ; nn < numof( _touch_slot ) ; ++nn ){
+    TouchSlot& ss = _touch_slot[ nn ];
+    if( ss.active && ss.pub.ismouse ) return &ss;
+  }
+  return  nullptr;
+}
+
+// Returns nullptr once PICO8_TOUCH_MAX contacts are already live; the extra
+// fingers are then ignored until one of them is lifted.
+static  TouchSlot*  touch_begin( bool ismouse, u8 hif_id, s32 raw_x, s32 raw_y ){
+  for( size_t nn=0 ; nn < numof( _touch_slot ) ; ++nn ){
+    TouchSlot& ss = _touch_slot[ nn ];
+    if( ss.active ) continue;
+
+    ss = TouchSlot();
+    ss.active       = true;
+    ss.seen         = true;
+    ss.hif_id       = hif_id;
+    ss.seq          = _touch_seq++;
+    ss.pub.id       = _touch_next_id++;
+    if( 0 == _touch_next_id ) _touch_next_id = 1;  // id 0 means "no contact"
+    ss.pub.ismouse  = ismouse;
+    ss.pub.pressed  = true;
+    ss.pub.x = ss.pub.px = touch_raw_to_fx8( raw_x );
+    ss.pub.y = ss.pub.py = touch_raw_to_fx8( raw_y );
+    return  &ss;
+  }
+  return  nullptr;
+}
+
+// Retire what ended last frame, then carry every surviving contact into this one.
+static  void  touch_frame_begin(){
+  for( size_t nn=0 ; nn < numof( _touch_slot ) ; ++nn ){
+    TouchSlot& ss = _touch_slot[ nn ];
+    if( !ss.active ) continue;
+    if( ss.pub.released ){ ss.active = false; continue; }
+    ss.pub.px       = ss.pub.x;
+    ss.pub.py       = ss.pub.y;
+    ss.pub.pressed  = false;
+    ss.pub.released = false;
+    ss.seen         = false;
+  }
+}
+
+static  void  touch_advance( u8 hif_id, s32 raw_x, s32 raw_y, bool ended ){
+  TouchSlot* ss = touch_find( hif_id );
+  if( !ss ){
+    // A tap that begins and ends inside one frame reaches us already ended:
+    // CHifDecoder keeps one entry per identifier, holding only the latest event.
+    ss = touch_begin( false, hif_id, raw_x, raw_y );
+    if( !ss ) return;
+  }
+  ss->seen  = true;
+  ss->pub.x = touch_raw_to_fx8( raw_x );
+  ss->pub.y = touch_raw_to_fx8( raw_y );
+  if( ss->pub.frames < 0xffff ) ++ss->pub.frames;
+  if( ended ) ss->pub.released = true;
+}
+
+// The mouse gets its own synthetic contact, driven by the b8lib driver's view
+// rather than by GetStatus(): CHifDecoder never rewrites an existing point's type
+// on MOUSE_DOWN, so a point born from a hover stays MOUSE_HOVER_MOVE until the
+// next move and the map cannot say whether the button is down.
+static  void  touch_advance_mouse( const b8HifMouseStatus* ms ){
+  TouchSlot* ss = touch_find_mouse();
+  if( ms->is_dragging ){
+    if( !ss ) ss = touch_begin( true, 0, ms->mouse_x, ms->mouse_y );
+    if( !ss ) return;
+    ss->seen  = true;
+    ss->pub.x = touch_raw_to_fx8( ms->mouse_x );
+    ss->pub.y = touch_raw_to_fx8( ms->mouse_y );
+    if( ss->pub.frames < 0xffff ) ++ss->pub.frames;
+  } else if( ss ){
+    ss->seen         = true;
+    ss->pub.x        = touch_raw_to_fx8( ms->mouse_x );
+    ss->pub.y        = touch_raw_to_fx8( ms->mouse_y );
+    ss->pub.released = true;
+  }
+}
+
+// Rebuild the oldest-first index the public API reports through.
+static  void  touch_frame_end(){
+  _touch_num = 0;
+  for( size_t nn=0 ; nn < numof( _touch_slot ) ; ++nn ){
+    TouchSlot& ss = _touch_slot[ nn ];
+    if( !ss.active ) continue;
+    // A contact that stops turning up without ever reporting an end still has to be
+    // handed to the game as released, or it would be stuck down forever.
+    if( !ss.seen ) ss.pub.released = true;
+
+    int ins = _touch_num;
+    while( ins > 0 && _touch_slot[ _touch_order[ ins-1 ] ].seq > ss.seq ){
+      _touch_order[ ins ] = _touch_order[ ins-1 ];
+      --ins;
+    }
+    _touch_order[ ins ] = (u8)nn;
+    ++_touch_num;
+  }
+}
+
+// The contact the single-pointer API speaks for: the most recent one still down,
+// matching the "most recently initiated touch" rule b8/hif.h documents.
+static  const TouchSlot*  touch_primary(){
+  const TouchSlot* best = nullptr;
+  for( size_t nn=0 ; nn < numof( _touch_slot ) ; ++nn ){
+    const TouchSlot& ss = _touch_slot[ nn ];
+    if( !ss.active || ss.pub.released ) continue;
+    if( !best || ss.seq > best->seq ) best = &ss;
+  }
+  return  best;
+}
+
 static  void  _reset(){
   _cnt_update = 0;
   _status = IDLE;
@@ -190,6 +343,7 @@ static  void  _reset(){
   }
   _hif_decoder = make_shared< CHifDecoder >(); 
   _mouse_status = MouseStatus();
+  touch_clear_all();
 
   {
     sprprint::Reset();
@@ -234,51 +388,57 @@ static  void  hif_update(){
     } 
   }
 
-  _mouse_status.ClearStatus();
+  touch_frame_begin();
 
-  // The pico8 layer exposes a single pointer, but the panel underneath is
-  // multi-touch, so "is a finger down?" must be answered from the whole set of
-  // contacts the decoder still considers active -- never from one TOUCH_END.
-  // Lifting *any* finger used to clear the held state here, and b8HifGetMouseStatus()
-  // has the mirror-image problem one layer down (b8lib/src/b8/hif.c tracks only
-  // _latest_identifier, so lifting the newest finger drops is_dragging while older
-  // ones are still touching). Counting the live contacts covers both cases.
-  bool touching = false;
+  // GetStatus() erases the contacts that ended on the previous call before it
+  // drains new events, so an end is visible exactly once -- which also means it
+  // must be called exactly once per frame. Everything the frame needs from it is
+  // therefore collected in this one pass.
   const auto& status = _hif_decoder->GetStatus();
   for (const auto& [key, value] : status) {
     switch(value->ev.type){
       case  B8_HIF_EV_TOUCH_START:
       case  B8_HIF_EV_TOUCH_MOVE:
-        touching = true;
-        _mouse_status.x = value->ev.xp;
-        _mouse_status.y = value->ev.yp;
+        touch_advance( key, value->ev.xp, value->ev.yp, false );
+        break;
+
+      case  B8_HIF_EV_TOUCH_CANCEL:
+      case  B8_HIF_EV_TOUCH_END:
+        touch_advance( key, value->ev.xp, value->ev.yp, true );
         break;
 
       case  B8_HIF_EV_MOUSE_MOVE:
       case  B8_HIF_EV_MOUSE_HOVER_MOVE:
       case  B8_HIF_EV_MOUSE_DOWN:
       case  B8_HIF_EV_MOUSE_UP:
-        _mouse_status.x = value->ev.xp;
-        _mouse_status.y = value->ev.yp;
+        // The mouse contact itself is synthesised below, but a bare hover still has
+        // to move mousex()/mousey(): a desktop game may track the cursor without
+        // ever pressing the button.
+        _mouse_status.x = touch_raw_to_fx8( value->ev.xp );
+        _mouse_status.y = touch_raw_to_fx8( value->ev.yp );
         break;
-
-      case  B8_HIF_EV_TOUCH_CANCEL:
-      case  B8_HIF_EV_TOUCH_END:
-        // This contact is gone; the ones still down are handled by their own entries.
-        break;
-
     }
   }
 
-  // The mouse button keeps coming from b8HifGetMouseStatus(): CHifDecoder does not
-  // rewrite an existing point's type on MOUSE_DOWN (a point born from a hover stays
-  // MOUSE_HOVER_MOVE until the next move), so GetStatus() cannot answer it.
   const b8HifMouseStatus* ms = _hif_decoder->GetMouseStatus();
-  if( ms->is_dragging || touching ){
+  touch_advance_mouse( ms );
+  touch_frame_end();
+
+  // Single-pointer compatibility view. Held state is the whole contact set rather
+  // than any one end event: lifting one finger must not report the pointer as
+  // released while the others are still down, and b8HifGetMouseStatus() cannot say
+  // so on its own (b8lib/src/b8/hif.c tracks only _latest_identifier, so lifting
+  // the *newest* finger drops is_dragging while older contacts remain).
+  _mouse_status.ClearStatus();
+  const TouchSlot* primary = touch_primary();
+  if( primary ){
+    _mouse_status.x = primary->pub.x;
+    _mouse_status.y = primary->pub.y;
     _mouse_status.btn_status |= LEFT;
     bs.frm_pressed[ BUTTON_MOUSE_LEFT ]++;
     bs.frm_released[ BUTTON_MOUSE_LEFT ] = 0;
   } else {
+    // No contact: the position holds wherever it was left, as it always has.
     bs.frm_pressed[ BUTTON_MOUSE_LEFT ] = 0;
     bs.frm_released[ BUTTON_MOUSE_LEFT ]++;
   }
@@ -1037,16 +1197,39 @@ s32 stat( int index ){
 }
 
 fx8 mousex(){
-  return fx8(_mouse_status.x).asr(4);
+  return  _mouse_status.x;
 }
 
 fx8 mousey(){
-  return  fx8(_mouse_status.y).asr(4);
+  return  _mouse_status.y;
 }
 
 u32 mousestatus(){
   return _mouse_status.btn_status;
 }
+
+int touchcount(){
+  return  _touch_num;
+}
+
+const Touch&  touch( int idx ){
+  if( idx < 0 || idx >= _touch_num ) return  _touch_none;
+  return  _touch_slot[ _touch_order[ idx ] ].pub;
+}
+
+const Touch*  touchbyid( u8 id ){
+  if( 0 == id ) return  nullptr;
+  for( int nn=0 ; nn < _touch_num ; ++nn ){
+    const Touch& tt = _touch_slot[ _touch_order[ nn ] ].pub;
+    if( tt.id == id ) return  &tt;
+  }
+  return  nullptr;
+}
+
+fx8   touchx( int idx ){ return  touch( idx ).x; }
+fx8   touchy( int idx ){ return  touch( idx ).y; }
+bool  touchp( int idx ){ return  touch( idx ).pressed; }
+bool  touchr( int idx ){ return  touch( idx ).released; }
 
 fx8 cos( fx8 rad ){
   return  fpm::cos( rad );
