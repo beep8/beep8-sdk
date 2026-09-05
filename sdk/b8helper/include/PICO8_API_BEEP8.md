@@ -265,6 +265,40 @@ s32 stat(int index);   // PICO-8 compat: 32=mouse X (int), 33=mouse Y (int), 34=
 
 Prefer `mousex()`/`mousey()`/`mousestatus()`; `stat()` exists only for PICO-8 compatibility.
 
+These describe a single pointer: the most recently begun touch that is still down, or the
+mouse. A one-finger game needs nothing else on either phone or desktop.
+
+Multi-touch (BEEP-8 extension; use only when two or more fingers must be distinguished):
+
+```cpp
+struct Touch {
+  u8   id;        // constant while this contact lives (1..255; 0 = invalid)
+  fx8  x, y;      // current position          -- same units as mousex()/mousey()
+  fx8  px, py;    // position last frame       -- (x - px) is this frame's movement
+  u16  frames;    // frames alive (1 on the frame it began)
+  bool pressed;   // began on this frame
+  bool released;  // ended on this frame; x,y hold the final position
+  bool ismouse;   // mouse rather than finger
+};
+
+int          touchcount();       // contacts tracked right now (0..PICO8_TOUCH_MAX, = 8)
+const Touch& touch(int idx);     // idx'th contact, oldest-first; out of range -> id == 0
+const Touch* touchbyid(u8 id);   // follow one contact across frames; nullptr once gone
+fx8  touchx(int idx);  fx8  touchy(int idx);
+bool touchp(int idx);  bool touchr(int idx);   // pressed / released
+```
+
+Two things to know:
+
+- A contact stays listed for exactly one frame after it is lifted, carrying `released` -- that
+  is the only frame the release is visible on, and it still counts towards `touchcount()`. Skip
+  the entries whose `released` is set when you mean "fingers still down". A finger that touches
+  and lifts inside one frame appears once with both `pressed` and `released`; the mouse is
+  sampled once per frame, so a sub-frame click is missed, as it always was for `mousestatus()`.
+- `idx` is not a handle -- lifting an earlier contact shifts the later ones down. Remember
+  `Touch::id` and use `touchbyid()` to follow one finger, and never keep the returned pointer
+  past the current frame.
+
 ---
 
 ## Math & random
@@ -447,7 +481,7 @@ void _update() override { if( btnp(BUTTON_O) ) sndSfx(SFX_JUMP); }
    (background tiles, persistent). Text color is independent of `color()`.
 7. **Radians** — `sin`/`cos`/`atan2` use radians; `atan2` takes `(y, x)`.
 8. **Extensions** — `poly()` (filled triangle), `btnr()`, `rndi/rndf/rndu/rndt`, sub-pixel
-   mouse (`mousex`/`mousey`).
+   mouse (`mousex`/`mousey`), and multi-touch (`touchcount`/`touch`/`touchbyid`).
 9. **No `sfx()` / `music()`** — those are PICO-8-only. BEEP-8's sound is `<sound.h>`
    (preset effects + MML music); see the Sound section above.
 10. **Different `map()`** — configure with `mapsetup()`, then `map(upix, vpix)` draws the whole
